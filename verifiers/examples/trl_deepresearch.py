@@ -75,12 +75,11 @@ train_dataset = preprocess_dataset(name="qa", split="train")
 print(train_dataset)
 print(train_dataset[0])
 
-# eval_dataset = preprocess_dataset(name="qa", split="test")
-# eval_dataset = eval_dataset.select(range(100))
+eval_dataset = preprocess_dataset(name="qa", split="test")
 
 vf_env = vf.ToolEnv(
     dataset=train_dataset,
-    # eval_dataset=eval_dataset,
+    eval_dataset=eval_dataset,
     system_prompt=TOOL_PROMPT,
     llm_fields=["think", ("tool", "answer")],
     env_fields=["tool_response"],
@@ -104,7 +103,7 @@ training_args=GRPOConfig(
     warmup_steps=30,
     num_train_epochs=1,
     temperature=0.6,
-    max_steps=300, # 1 epoch = 139 steps
+    max_steps=100, # 1 epoch = 139 steps
     bf16=True,
     max_grad_norm=0.1,
     num_iterations=4,
@@ -116,10 +115,10 @@ training_args=GRPOConfig(
     num_generations=8,
     gradient_accumulation_steps=1,
     gradient_checkpointing=True,
-    # eval_strategy="steps",
-    # eval_steps=50,
-    # eval_accumulation_steps=1,
-    # eval_on_start=True,
+    eval_strategy="steps",
+    eval_steps=50,
+    eval_accumulation_steps=1,
+    eval_on_start=True,
     save_strategy="steps",
     save_steps=100,
     save_only_model=True,
