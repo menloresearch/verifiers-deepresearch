@@ -4,16 +4,18 @@ from trl import GRPOConfig
 import verifiers as vf
 from verifiers.tools import search, python, ask
 from verifiers.utils import preprocess_dataset
+from verifiers.utils import get_lora_model_and_tokenizer
+from peft import LoraConfig
 
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
 CUDA_VISIBLE_DEVICES=0,1 python verifiers/inference/vllm_serve.py --model 'Qwen/Qwen3-14B' \
-    --tensor_parallel_size 4 --max_model_len 4096 --dtype bfloat16 \
+    --tensor_parallel_size 2 --max_model_len 4096 --dtype bfloat16 \
     --gpu_memory_utilization 0.9 --enable_prefix_caching True \
     --host 0.0.0.0 --port 8000
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/think_rag.py
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 6 verifiers/examples/think_rag.py
 """
 
 TOOL_PROMPT = """
@@ -65,13 +67,21 @@ print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
 model_name = "Qwen/Qwen3-14B"
-model, tokenizer = vf.get_model_and_tokenizer(model_name)
+lora_config = LoraConfig(
+    r=64,
+    lora_alpha=128,
+    target_modules="all-linear",
+    lora_dropout=0.05,
+    use_dora=True,
+)
+model, tokenizer = get_lora_model_and_tokenizer(model_name, lora_config)
 run_name = "math-grpo_" + model_name.split("/")[-1].lower()
 
 training_args=GRPOConfig(
     output_dir=f"outputs/{run_name}",
     run_name=run_name,
     learning_rate=1e-6,
+    # optim="adamw_8bit",
     lr_scheduler_type="constant_with_warmup",
     warmup_steps=10,
     num_train_epochs=1,

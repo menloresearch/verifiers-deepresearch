@@ -6,14 +6,14 @@ from verifiers.tools import search, python, ask
 from verifiers.utils import preprocess_dataset
 
 """
-Multi-GPU training (single node, 2 training + 6 inference)
-# Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-CUDA_VISIBLE_DEVICES=0,1 python verifiers/inference/vllm_serve.py --model 'Qwen/Qwen3-14B' \
-    --tensor_parallel_size 4 --max_model_len 4096 --dtype bfloat16 \
+Multi-GPU training (single node, 4 training + 4 inference)
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'Qwen/Qwen2.5-7B-Instruct' \
+    --tensor_parallel_size 4 --max_model_len 8192 --dtype bfloat16 \
     --gpu_memory_utilization 0.9 --enable_prefix_caching True \
     --host 0.0.0.0 --port 8000
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/think_rag.py
+CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml verifiers/examples/math_train.py
 """
 
 TOOL_PROMPT = """
@@ -63,8 +63,7 @@ vf_env = vf.ToolEnv(
 )
 print(vf_env.system_prompt)
 
-# model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "Qwen/Qwen3-14B"
+model_name = "Qwen/Qwen2.5-1.5B-Instruct"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
 run_name = "math-grpo_" + model_name.split("/")[-1].lower()
 
@@ -83,8 +82,8 @@ training_args=GRPOConfig(
     beta=0.002,
     max_prompt_length=1024,
     max_completion_length=2048,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
+    per_device_train_batch_size=12,
+    per_device_eval_batch_size=12,
     num_generations=6,
     gradient_accumulation_steps=1,
     gradient_checkpointing=True,
@@ -102,7 +101,7 @@ training_args=GRPOConfig(
     logging_steps=1,
     log_on_each_node=False,
     log_completions=True,
-    report_to="wandb",
+    report_to=None,
     reward_weights=vf_env.get_reward_weights()
 )
 trainer = vf.GRPOEnvTrainer(

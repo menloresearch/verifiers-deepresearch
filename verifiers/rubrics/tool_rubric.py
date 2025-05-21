@@ -4,6 +4,50 @@ from typing import List, Dict, Callable
 from verifiers.parsers import XMLParser
 from verifiers.rubrics import Rubric
 from verifiers.rubrics.math_grader import grade
+import re
+import string
+import random
+
+def normalize_answer(s):
+    def remove_articles(text):
+        return re.sub(r"\b(a|an|the)\b", " ", text)
+
+    def white_space_fix(text):
+        return " ".join(text.split())
+
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return "".join(ch for ch in text if ch not in exclude)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+def em_check(prediction, golden_answers):
+    if isinstance(golden_answers, str):
+        golden_answers = [golden_answers]
+    normalized_prediction = normalize_answer(prediction)
+    score = 0
+    for golden_answer in golden_answers:
+        golden_answer = normalize_answer(golden_answer)
+        if golden_answer == normalized_prediction:
+            score = 1
+            break
+    return score
+
+
+def subem_check(prediction, golden_answers):
+    if isinstance(golden_answers, str):
+        golden_answers = [golden_answers]
+    normalized_prediction = normalize_answer(prediction)
+    score = 0
+    for golden_answer in golden_answers:
+        golden_answer = normalize_answer(golden_answer)
+        if golden_answer in normalized_prediction:
+            score = 1
+            break
+    return score
 
 class ToolRubric(Rubric):
     def __init__(self,
@@ -17,6 +61,7 @@ class ToolRubric(Rubric):
             self.mc_reward_func,
             self.math_reward_func,
             self.code_reward_func,
+            self.qa_reward_func,
             self.correct_answer_reward_func,
             self.tool_execution_reward_func,
             self.parser.get_format_reward_func(),
@@ -26,6 +71,7 @@ class ToolRubric(Rubric):
             0.0,
             0.0,
             0.0,
+            0.0, # Weight for qa_reward_func
             1.0,
             0.5,
             0.25,
@@ -138,6 +184,38 @@ class ToolRubric(Rubric):
             rewards.append(reward)
         return rewards
     
+    def qa_reward_func(self, completions, answer, task, **kwargs) -> List[float | None]:
+        """
+        Reward function that checks if the QA answer matches the expected answer.
+        Uses text normalization and either exact matching or substring matching.
+        """
+        rewards = []
+        for completion, ans, t in zip(completions, answer, task):
+            if t == "qa":
+                response = str(self.get_last_answer(completion))
+                
+                # Try to parse the answer as a list of possible answers
+                try:
+                    answers = json.loads(ans)
+                    if isinstance(answers, str):
+                        answers = [answers]
+                    elif not isinstance(answers, list):
+                        answers = [str(answers)]
+                except json.JSONDecodeError:
+                    answers = [ans]
+                
+                # Get matching mode - default to exact match
+                match_mode = kwargs.get('qa_match_mode', 'exact')
+                
+                if match_mode == 'substring':
+                    reward = 1.0 if any(subem_check(response, answer) for answer in answers) else 0.0
+                else:
+                    reward = 1.0 if any(em_check(response, answer) for answer in answers) else 0.0
+            else:
+                reward = None
+            rewards.append(reward)
+        return rewards
+    
     def correct_answer_reward_func(self, completions, answer, task, **kwargs) -> List[float | None]:
         """Reward function that checks if the final answer matches the expected answer."""
         rewards = []
@@ -156,6 +234,11 @@ class ToolRubric(Rubric):
             elif t == "code":
                 try:
                     reward = self.code_reward_func([completion], [ans], [t], **kwargs)[0]
+                except:
+                    reward = None
+            elif t == "qa":
+                try:
+                    reward = self.qa_reward_func([completion], [ans], [t], **kwargs)[0]
                 except:
                     reward = None
             else:
@@ -309,3 +392,5 @@ class ToolRubric(Rubric):
             
         tool_attempt_reward_func.__name__ = f"{tool_name}_attempt_reward_func"
         return tool_attempt_reward_func
+
+    

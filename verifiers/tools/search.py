@@ -1,3 +1,76 @@
+def search_rag(query: str, num_results: int = 3, 
+               server_url: str = "http://localhost:2223") -> str:
+    """Searches using FlashRAG server and returns formatted results.
+    
+    Args:
+        query: The search query string
+        num_results: Number of results to return (default: 3)
+        server_url: URL of the FlashRAG server (default: http://localhost:2223)
+        
+    Returns:
+        Formatted string with bullet points of top results, each with title and text content
+        
+    Examples:
+        {"query": "what is machine learning", "num_results": 3}
+    """
+    import requests
+    import json
+    
+    try:
+        # Prepare the request payload
+        payload = {
+            "queries": [query],
+            "topk_retrieval": max(num_results * 3, 10),  # Retrieve more to ensure good reranking
+            "topk_rerank": num_results,
+            "return_scores": False
+        }
+        
+        # Make the API call
+        response = requests.post(
+            f"{server_url}/retrieve",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=600
+        )
+        
+        # Check if the request was successful
+        if response.status_code != 200:
+            return f"Error: RAG server returned status {response.status_code}: {response.text}"
+        
+        # Parse the response
+        result = response.json()
+        documents = result.get('result', [[]])[0]  # Get documents for the first (and only) query
+        
+        if not documents:
+            return "No results found"
+        
+        # Format the results similar to other search functions
+        summaries = []
+        for i, doc in enumerate(documents, 1):
+            title = doc.get('title', f'Document {i}')
+            text = doc.get('text', '').strip()
+            
+            # Truncate text if too long (similar to other search functions)
+            if len(text) > 300:
+                text = text[:300].rsplit('.', 1)[0] + '...'
+            elif len(text) > 200:
+                text = text[:200].rsplit(' ', 1)[0] + '...'
+            
+            summaries.append(f"• {title}\n  {text}")
+        
+        return "\n\n".join(summaries)
+        
+    except requests.exceptions.ConnectionError:
+        return "Error: Could not connect to RAG server. Please ensure the server is running."
+    except requests.exceptions.Timeout:
+        return "Error: Request to RAG server timed out."
+    except requests.exceptions.RequestException as e:
+        return f"Error: Request failed: {str(e)}"
+    except json.JSONDecodeError:
+        return "Error: Invalid response format from RAG server."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 def search_ddg(query: str, num_results: int = 5) -> str:
     """Searches DuckDuckGo and returns concise summaries of top results.
     
@@ -67,3 +140,8 @@ def search(query: str) -> str:
         return "\n\n".join(summaries[:3])
     except Exception as e:
         return f"Error: {str(e)}"
+
+if __name__=="__main__":
+    result = search_rag("what is machine learning", num_results=3)
+    print("Search Results:")
+    print(result)

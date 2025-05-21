@@ -3,6 +3,8 @@ import json
 from typing import List, Dict, Callable, Any
 
 from datasets import Dataset, load_dataset, concatenate_datasets # type: ignore
+import logging
+logger = logging.getLogger(__name__)
 
 def extract_boxed_answer(text: str) -> str | None:
     def find_matching_brace(s: str, start: int) -> int:
@@ -170,6 +172,15 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
                 "task": "code"
             }
         return preprocess_prime_code
+    elif name == "qa":
+        def preprocess_qa(x: Dict[str, Any]) -> Dict[str, Any]:
+            task = x.get("task", "qa") # Default if task column is missing
+            return {
+                "question": x["question"],
+                "answer": x["answer"],
+                "task": task,
+            }
+        return preprocess_qa
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset.")
 
@@ -242,6 +253,14 @@ def preprocess_dataset(name: str = "gsm8k",
             split = "train"
         dataset: Dataset = load_dataset("PrimeIntellect/verifiable-coding-problems")[split] # type: ignore
         dataset = dataset.filter(lambda x: x['prompt'].startswith("Solve the following coding problem using the programming language python:")) # type: ignore
+    if name == "qa":
+        if split is None:
+            split = "train"
+        logger.info(f"Loading dataset 'jan-hq/Musique-subset' with' and split='{split}'")
+        try:
+            dataset = load_dataset("jan-hq/Musique-subset")[split]# type: ignore
+        except Exception as e:
+             raise ValueError(f"Failed to load jan-hq/Musique-subset with', split='{split}'. Error: {e}")
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset. \
 Please ensure that the dataset is formatted with 'prompt' (str) and 'answer' (str) keys.")
