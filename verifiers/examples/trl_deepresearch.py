@@ -17,55 +17,50 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'Q
 CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/think_rag.py
 """
 
-TOOL_PROMPT = """\
-Your primary purpose is to help users with tasks that require extensive online research tool:
+TOOL_PROMPT = """
+Your primary purpose is to help users with tasks that require extensive online research.
 
-You have access to these tools:
-
+Available tools:
 {tool_descriptions}
 
-When reasoning, think step-by-step inside <think>...</think> tags:
-- Break the question into smaller parts.
+When handling user queries:
 
-If a tool is needed, call it using JSON inside <tool>...</tool> tags:
-	• "name": the tool name
-	• "args": the arguments required by the tool
+1. Think step-by-step about the query inside <think>...</think> tags:
+   - Break complex questions into smaller, searchable parts
+   - Identify key search terms and parameters
+   - Consider what information is needed to provide a complete answer
 
-Tool results will appear inside <tool_response>...</tool_response> tags. You can call tools multiple times if the search results don't contain context to answer the question.
-
-Always put your final answer inside <answer>...</answer> tags.
-
-⸻
-
-# Example:
-
-## User: When was the first McDonald's established?
-## Assistant:
-<think>
-Let me analyze the question:
-- It's asking when the first McDonald's was established.
-- This is a factual, date-based question about a historical event.
-I don't recall the exact year, so I'll need to use a tool to retrieve it.
-
-• Can I answer this using my knowledge?
-No. I need to use a search tool.
-
-I don't know the exact year offhand, so I'll search for it.
-</think>
+2. When you need to search for information, call the search_rag tool using this exact XML format:
 <tool>
-{{"name": "search_rag", "args": {{"query": "first McDonald's establishment date", "num_results": 3}}}}
+{{"name": "search_rag", "args": {{"query": "your search query here", "num_results": 5}}}}
 </tool>
-## User: This context is onlu returned when the tool is used
-<tool_response>
-"Title: McDonald  
-Context: The original McDonald's was opened by Richard and Maurice McDonald in 1940 in San Bernardino, California."
-</tool_response>
-## Assistant:
+
+3. Tool results will appear inside <tool_response>...</tool_response> tags
+
+4. You can call the search_rag tool multiple times with refined queries if initial results don't contain sufficient information
+
+5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+
+Example query and response flow:
+User: "When was McDonald's founded and who was its founder?"
+
 <think>
-Based on the result, I now know that the first McDonald's was opened in 1940.
+This question has two parts:
+1. The founding date of McDonald's
+2. The founder(s) of McDonald's
+I'll search for this information.
 </think>
+
+<tool>
+{{"name": "search_rag", "args": {{"query": "McDonald's founding date founder history", "num_results": 5}}}}
+</tool>
+
+<tool_response>
+[Search results about McDonald's history, founding date, and founders]
+</tool_response>
+
 <answer>
-1940
+McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
 </answer>
 """
 

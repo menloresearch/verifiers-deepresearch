@@ -1,11 +1,9 @@
-def search_rag(query: str, num_results: int = 3, 
-               server_url: str = "http://localhost:2223") -> str:
+def search_rag(query: str, num_results: int = 3) -> str:
     """Searches using FlashRAG server and returns formatted results.
     
     Args:
         query: The search query string
         num_results: Number of results to return (default: 3)
-        server_url: URL of the FlashRAG server (default: http://localhost:2223)
         
     Returns:
         Formatted string with bullet points of top results, each with title and text content
@@ -15,7 +13,7 @@ def search_rag(query: str, num_results: int = 3,
     """
     import requests
     import json
-    
+    server_url: str = "http://localhost:2223"
     try:
         # Prepare the request payload
         payload = {
