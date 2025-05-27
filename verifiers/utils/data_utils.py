@@ -253,7 +253,7 @@ def preprocess_dataset(name: str = "gsm8k",
             split = "train"
         dataset: Dataset = load_dataset("PrimeIntellect/verifiable-coding-problems")[split] # type: ignore
         dataset = dataset.filter(lambda x: x['prompt'].startswith("Solve the following coding problem using the programming language python:")) # type: ignore
-    if name == "qa":
+    elif name == "qa":
         if split is None:
             split = "train"
         logger.info(f"Loading dataset 'jan-hq/Musique-subset' with' and split='{split}'")

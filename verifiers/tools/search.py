@@ -6,10 +6,10 @@ def search_rag(query: str, num_results: int = 3) -> str:
         num_results: Number of results to return (default: 3)
         
     Returns:
-        Formatted string with bullet points of top results, each with title and text content
+        Formatted string with bullet points of top results, each with title, id, and context from the corpus.
         
     Examples:
-        {"query": "what is machine learning", "num_results": 3}
+        {"name": "search_rag", "args": {"query": "effects of climate change on polar bears", "num_results": 2}}
     """
     import requests
     import json
