@@ -1,8 +1,10 @@
 import os
+
+from datasets import concatenate_datasets
+from trl import GRPOConfig
+
 import verifiers as vf
 from verifiers.parsers import XMLParser
-from trl import GRPOConfig
-from datasets import concatenate_datasets
 from verifiers.tools.search import search_rag
 from verifiers.utils import preprocess_dataset
 
@@ -80,17 +82,17 @@ vf_env = vf.ToolEnv(
     env_fields=["tool_response"],
     few_shot=[],
     tools=[search_rag],
-    max_steps=5
+    max_steps=5,
 )
 
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "Qwen/Qwen3-4B"
+model_name = "Qwen/Qwen3-1.7B"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "Qwen3-4B-v0.1-deepresearch" + model_name.split("/")[-1].lower()
+run_name = "Qwen3-1.7B-v0.1-deepresearch" + model_name.split("/")[-1].lower()
 
-training_args=GRPOConfig(
+training_args = GRPOConfig(
     output_dir=f"outputs/{run_name}",
     run_name=run_name,
     learning_rate=3e-6,
@@ -98,7 +100,7 @@ training_args=GRPOConfig(
     warmup_steps=30,
     num_train_epochs=1,
     temperature=0.6,
-    max_steps=100, # 1 epoch = 139 steps
+    max_steps=100,  # 1 epoch = 139 steps
     bf16=True,
     max_grad_norm=0.1,
     num_iterations=4,
@@ -132,7 +134,7 @@ training_args=GRPOConfig(
     # push_to_hub=True,
     # hub_model_id="Qwen3-8B-v0.1-deepresearch",
     # use_liger_loss=True,
-    loss_type="dr_grpo"
+    loss_type="dr_grpo",
 )
 trainer = vf.GRPOEnvTrainer(
     model=model,
@@ -141,6 +143,6 @@ trainer = vf.GRPOEnvTrainer(
     env=vf_env,
     args=training_args,
     train_dataset=vf_env.get_dataset(),
-    eval_dataset=vf_env.get_eval_dataset()
+    eval_dataset=vf_env.get_eval_dataset(),
 )
-trainer.train() 
+trainer.train()

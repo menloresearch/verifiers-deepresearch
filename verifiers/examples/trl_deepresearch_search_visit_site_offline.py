@@ -109,9 +109,9 @@ vf_env = vf.ToolEnv(
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "Qwen/Qwen3-14B"
+model_name = "Qwen/Qwen3-1.7B"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "Qwen3-14B-v0.1-deepresearch" + model_name.split("/")[-1].lower()
+run_name = "Qwen3-1.7B-v0.1-deepresearch" + model_name.split("/")[-1].lower()
 
 training_args = GRPOConfig(
     output_dir=f"outputs/{run_name}",
@@ -128,10 +128,10 @@ training_args = GRPOConfig(
     beta=0.01,
     max_prompt_length=1024,
     max_completion_length=1024,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    num_generations=8,
-    gradient_accumulation_steps=8,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    num_generations=4,
+    gradient_accumulation_steps=2,
     gradient_checkpointing=True,
     eval_strategy="steps",
     eval_steps=50,
@@ -141,7 +141,7 @@ training_args = GRPOConfig(
     save_steps=100,
     save_only_model=True,
     use_vllm=True,
-    vllm_server_host="0.0.0.0",
+    vllm_server_host="localhost",
     vllm_server_port=8000,
     vllm_gpu_memory_utilization=0.9,
     logging_steps=1,
