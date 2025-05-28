@@ -1,4 +1,4 @@
-def search_with_urls(query: str, num_results: int = 3) -> str:
+def web_search(query: str, num_results: int = 3) -> str:
     """Enhanced search function that returns URLs and previews for each result.
     
     Args:
@@ -64,7 +64,7 @@ def search_with_urls(query: str, num_results: int = 3) -> str:
         return f"Error: {str(e)}"
 
 
-def visit_site(url: str) -> str:
+def visit_tool(url: str) -> str:
     """Visit a specific URL and return its full content.
     
     Args:

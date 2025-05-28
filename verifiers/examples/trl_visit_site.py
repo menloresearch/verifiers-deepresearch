@@ -2,7 +2,7 @@ import os
 from trl import GRPOConfig
 
 import verifiers as vf
-from verifiers.tools.search_visit_rag import search_with_urls, visit_site
+from verifiers.tools.search_visit_rag import web_search, visit_tool
 from verifiers.utils import preprocess_dataset
 
 os.environ["WANDB_PROJECT"] = "DeepResearch-v0.2-visit-site"
@@ -103,7 +103,7 @@ vf_env = vf.ToolEnv(
     system_prompt=TOOL_PROMPT,
     llm_fields=["think", ("tool", "answer")],
     few_shot=[],
-    tools=[search_with_urls, visit_site],
+    tools=[web_search, visit_tool],
     max_steps=5,
 )
 
