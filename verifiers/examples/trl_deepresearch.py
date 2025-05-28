@@ -8,6 +8,7 @@ from verifiers.parsers import XMLParser
 from verifiers.tools.search import search_rag
 from verifiers.utils import preprocess_dataset
 
+os.environ["WANDB_PROJECT"] = "test-qwen-1.5-instruct"
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B

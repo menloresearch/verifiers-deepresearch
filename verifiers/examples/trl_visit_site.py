@@ -1,9 +1,11 @@
+import os
 from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import search_with_urls, visit_site
 from verifiers.utils import preprocess_dataset
 
+os.environ["WANDB_PROJECT"] = "DeepResearch-v0.2-visit-site"
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
@@ -108,9 +110,9 @@ vf_env = vf.ToolEnv(
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+model_name = "Qwen/Qwen3-14B"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "Qwen3-14B-v0.1-deepresearch" + model_name.split("/")[-1].lower()
+run_name = "Qwen3-14B-v0.2-deepresearch" + model_name.split("/")[-1].lower()
 
 training_args = GRPOConfig(
     output_dir=f"outputs/{run_name}",
@@ -120,7 +122,7 @@ training_args = GRPOConfig(
     warmup_steps=30,
     num_train_epochs=1,
     temperature=0.6,
-    max_steps=100,  # 1 epoch = 139 steps
+    max_steps=2000,  # 1 epoch = 139 steps
     bf16=True,
     max_grad_norm=0.1,
     num_iterations=4,
@@ -151,8 +153,8 @@ training_args = GRPOConfig(
     scale_rewards=False,
     epsilon_high=0.28,
     mask_truncated_completions=True,
-    # push_to_hub=True,
-    # hub_model_id="Qwen3-8B-v0.1-deepresearch",
+    push_to_hub=True,
+    hub_model_id="Qwen3-14B-v0.2-deepresearch",
     # use_liger_loss=True,
     loss_type="dr_grpo",
 )
