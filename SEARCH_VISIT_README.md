@@ -1,6 +1,19 @@
 # Enhanced RAG with Search and Visit Site Functionality
 
 This implementation provides an enhanced RAG (Retrieval-Augmented Generation) system that combines search functionality with the ability to visit specific pages for detailed content.
+## Setup
+
+PyPI [coming soon](https://pypi.org/project/verifiers/), for now just do:
+```bash
+git clone https://github.com/willccbb/verifiers.git
+cd verifiers
+uv sync
+uv pip install flash-attn --no-build-isolation
+uv pip install -e .
+# for start rag server
+uv pip install faiss-cpu sentence-transformers
+source .venv/bin/activate
+```
 
 ## Features
 

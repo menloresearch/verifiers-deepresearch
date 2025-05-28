@@ -30,14 +30,14 @@ When handling user queries:
    - Identify key search terms and parameters
    - Consider what information is needed to provide a complete answer
 
-2. When you need to search for information, call the search_with_urls tool using this exact XML format:
+2. When you need to search for information, call the web_search tool using this exact XML format:
 <tool>
-{{"name": "search_with_urls", "args": {{"query": "your search query here", "num_results": 5}}}}
+{{"name": "web_search", "args": {{"query": "your search query here", "num_results": 5}}}}
 </tool>
 
-3. If search results show promising URLs/documents but you need more detailed information, use the visit_site tool:
+3. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
 <tool>
-{{"name": "visit_site", "args": {{"url": "doc_1 or specific URL from search results"}}}}
+{{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool>
 
 4. Tool results will appear inside <result>...</result> tags
@@ -57,7 +57,7 @@ I'll search for this information first, then visit specific pages if needed.
 </think>
 
 <tool>
-{{"name": "search_with_urls", "args": {{"query": "McDonald's founding date founder history", "num_results": 3}}}}
+{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history", "num_results": 3}}}}
 </tool>
 
 <result>
@@ -73,7 +73,7 @@ Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global fra
 </result>
 
 <tool>
-{{"name": "visit_site", "args": {{"url": "doc_1"}}}}
+{{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
 </tool>
 
 <result>
