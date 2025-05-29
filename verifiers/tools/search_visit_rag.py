@@ -1,3 +1,6 @@
+import requests
+import re
+
 def web_search(query: str, num_results: int = 3) -> str:
     """Enhanced search function that returns URLs and previews for each result.
     
@@ -136,7 +139,7 @@ def search_and_visit_rag(query: str, num_results: int = 3, visit_threshold: floa
     return search_results + instructions
 
 
-def _create_preview(text: str, max_sentences: int = 3, max_chars: int = 200) -> str:
+def _create_preview(text: str, max_sentences: int = 2, max_chars: int = 200) -> str:
     """Create a preview from text content."""
     if not text:
         return "No preview available"

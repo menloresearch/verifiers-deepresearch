@@ -77,8 +77,8 @@ class ToolRubric(Rubric):
             0.0,
             0.0,
             0.0,  # Weight for qa_reward_func
-            1.0,
-            0.5,
+            1.5,
+            0.0,
             0.25,
             0.25,
         ]
@@ -86,22 +86,22 @@ class ToolRubric(Rubric):
             # Tool execution success reward
             self.reward_funcs.append(self.get_named_tool_reward_func(tool_name))
             # Higher weight for search and visit tools
-            if tool_name in ["search_with_urls", "visit_site"]:
-                self.reward_weights.append(0.3)  # Reward successful search/visit
+            if tool_name in ["web_search", "visit_tool"]:
+                self.reward_weights.append(0.0)  # Reward successful search/visit
             else:
                 self.reward_weights.append(0.0)
 
             # Tool usage count reward
             self.reward_funcs.append(self.get_named_tool_count_reward_func(tool_name))
-            if tool_name in ["search_with_urls", "visit_site"]:
-                self.reward_weights.append(0.2)  # Encourage using search/visit appropriately
+            if tool_name in ["web_search", "visit_tool"]:
+                self.reward_weights.append(0.0)  # Encourage using search/visit appropriately
             else:
                 self.reward_weights.append(0.0)
 
             # Tool attempt reward
             self.reward_funcs.append(self.get_named_tool_attempt_reward_func(tool_name))
-            if tool_name in ["search_with_urls", "visit_site"]:
-                self.reward_weights.append(0.1)  # Small reward for attempting search/visit
+            if tool_name in ["web_search", "visit_tool"]:
+                self.reward_weights.append(0.0)  # Small reward for attempting search/visit
             else:
                 self.reward_weights.append(0.0)
 
