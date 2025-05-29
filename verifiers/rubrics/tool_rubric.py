@@ -82,28 +82,29 @@ class ToolRubric(Rubric):
             0.25,
             0.25,
         ]
-        for tool_name in self.tools.keys():
-            # Tool execution success reward
-            self.reward_funcs.append(self.get_named_tool_reward_func(tool_name))
-            # Higher weight for search and visit tools
-            if tool_name in ["web_search", "visit_tool"]:
-                self.reward_weights.append(0.0)  # Reward successful search/visit
-            else:
-                self.reward_weights.append(0.0)
+        # fixme: harcoded for current strat. maybe you want to do for tool_name in self.tools.keys(): ...
+        tool_name = self.tools.keys()[0]
+        # Tool execution success reward
+        self.reward_funcs.append(self.get_named_tool_reward_func(tool_name))
+        # Higher weight for search and visit tools
+        if tool_name in ["web_search", "visit_tool"]:
+            self.reward_weights.append(0.25)  # Reward successful search/visit
+        else:
+            self.reward_weights.append(0.0)
 
-            # Tool usage count reward
-            self.reward_funcs.append(self.get_named_tool_count_reward_func(tool_name))
-            if tool_name in ["web_search", "visit_tool"]:
-                self.reward_weights.append(0.0)  # Encourage using search/visit appropriately
-            else:
-                self.reward_weights.append(0.0)
+        # Tool usage count reward
+        self.reward_funcs.append(self.get_named_tool_count_reward_func(tool_name))
+        if tool_name in ["web_search", "visit_tool"]:
+            self.reward_weights.append(0.0)  # Encourage using search/visit appropriately
+        else:
+            self.reward_weights.append(0.0)
 
-            # Tool attempt reward
-            self.reward_funcs.append(self.get_named_tool_attempt_reward_func(tool_name))
-            if tool_name in ["web_search", "visit_tool"]:
-                self.reward_weights.append(0.0)  # Small reward for attempting search/visit
-            else:
-                self.reward_weights.append(0.0)
+        # Tool attempt reward
+        self.reward_funcs.append(self.get_named_tool_attempt_reward_func(tool_name))
+        if tool_name in ["web_search", "visit_tool"]:
+            self.reward_weights.append(0.0)  # Small reward for attempting search/visit
+        else:
+            self.reward_weights.append(0.0)
 
     def evaluate_code(self, code_str, answer, **kwargs) -> float:
         import io
