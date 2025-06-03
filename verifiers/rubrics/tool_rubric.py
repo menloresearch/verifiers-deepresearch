@@ -209,6 +209,7 @@ class ToolRubric(Rubric):
         Reward function that checks if the QA answer matches the expected answer.
         Uses text normalization and either exact matching or substring matching.
         """
+        match_mode = "substring"
         rewards = []
         for completion, ans, t in zip(completions, answer, task):
             if t == "qa":
@@ -225,8 +226,7 @@ class ToolRubric(Rubric):
                     answers = [ans]
 
                 # Get matching mode - default to exact match
-                match_mode = kwargs.get("qa_match_mode", "exact")
-
+                # match_mode = kwargs.get("qa_match_mode", "exact")
                 if match_mode == "substring":
                     reward = 1.0 if any(subem_check(response, answer) for answer in answers) else 0.0
                 else:

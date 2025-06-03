@@ -9,12 +9,12 @@ os.environ["WANDB_PROJECT"] = "DeepResearch-v0.2-visit-site-no-think"
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-CUDA_VISIBLE_DEVICES=0,1 python verifiers/inference/vllm_serve.py --model 'Qwen/Qwen3-8B' \
-    --tensor_parallel_size 2 --max_model_len 8192 --dtype bfloat16 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'jan-hq/Qwen3-14B-v0.2-deepresearch-200-step' \
+    --tensor_parallel_size 2 --data_parallel_size 2 --max_model_len 16384 --dtype bfloat16 \
     --gpu_memory_utilization 0.9 --enable_prefix_caching True \
     --host 0.0.0.0 --port 8000
 
-CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 6 verifiers/examples/think_rag.py
+CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/trl_visit_site_no_think.py
 """
 
 TOOL_PROMPT = """
@@ -104,28 +104,30 @@ vf_env = vf.ToolEnv(
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "Qwen/Qwen3-8B"
+model_name = "jan-hq/Qwen3-14B-v0.2-deepresearch-200-step"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "Qwen3-14B-v0.2-deepresearch" + model_name.split("/")[-1].lower()
+run_name = "Qwen3-14B-v0.2-deepresearch-no-think" + model_name.split("/")[-1].lower()
 
 training_args = GRPOConfig(
     output_dir=f"outputs/{run_name}",
     run_name=run_name,
     learning_rate=3e-6,
     lr_scheduler_type="constant_with_warmup",
-    warmup_steps=30,
-    num_train_epochs=1,
-    temperature=0.6,
-    max_steps=2000,  # 1 epoch = 139 steps
+    warmup_steps=10,
+    num_train_epochs=5,
+    temperature=0.7,
+    top_p=0.8,
+    top_k=20,
+    max_steps=500,  # 1 epoch = 139 steps
     bf16=True,
     max_grad_norm=0.1,
     num_iterations=4,
     beta=0.01,
-    max_prompt_length=1024,
-    max_completion_length=1024,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    num_generations=6,
+    max_prompt_length=2048,
+    max_completion_length=16384,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    num_generations=8,
     gradient_accumulation_steps=1,
     gradient_checkpointing=True,
     # eval_strategy="steps",
@@ -148,7 +150,7 @@ training_args = GRPOConfig(
     epsilon_high=0.28,
     mask_truncated_completions=True,
     push_to_hub=True,
-    hub_model_id="Qwen3-14B-v0.2-deepresearch",
+    hub_model_id="Qwen3-14B-v0.2-deepresearch-no-think",
     # use_liger_loss=True,
     loss_type="dr_grpo",
 )
