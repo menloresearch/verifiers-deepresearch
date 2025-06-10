@@ -1,22 +1,22 @@
 import requests
 import re
 
-def web_search(query: str, num_results: int = 3) -> str:
+def web_search(query: str) -> str:
     """Enhanced search function that returns URLs and previews for each result.
     
     Args:
         query: The search query string
-        num_results: Number of results to return (default: 3)
         
     Returns:
         Formatted string with search results including URLs and previews
     """
     server_url = "http://localhost:2223"
+    num_results = 10
     
     try:
         payload = {
             "queries": [query],
-            "topk_retrieval": max(num_results * 3, 10),
+            "topk_retrieval": max(num_results * 3, 15),
             "topk_rerank": num_results,
             "return_scores": False
         }

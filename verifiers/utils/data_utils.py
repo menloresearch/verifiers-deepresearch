@@ -259,6 +259,7 @@ def preprocess_dataset(name: str = "gsm8k",
         logger.info(f"Loading dataset 'jan-hq/Musique-subset' with' and split='{split}'")
         try:
             dataset = load_dataset("jan-hq/Musique-subset")[split]# type: ignore
+            dataset = dataset.shuffle(seed=42)
         except Exception as e:
              raise ValueError(f"Failed to load jan-hq/Musique-subset with', split='{split}'. Error: {e}")
     else:

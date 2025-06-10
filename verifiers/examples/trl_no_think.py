@@ -5,16 +5,16 @@ import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
 from verifiers.utils import preprocess_dataset
 
-os.environ["WANDB_PROJECT"] = "DeepResearch-v0.3-visit-site"
+os.environ["WANDB_PROJECT"] = "DeepResearch-v0.4-visit-site-no-think"
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'Qwen/Qwen3-8B' \
-    --tensor_parallel_size 1 --data_parallel_size 4 --max_model_len 16384 --dtype bfloat16 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'jan-hq/Qwen3-4B-v0.3-deepresearch-100-step' \
+    --tensor_parallel_size 1 --data_parallel_size 4 --max_model_len 32768 --dtype bfloat16 \
     --gpu_memory_utilization 0.9 --enable_prefix_caching True \
     --host 0.0.0.0 --port 8000
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 8 verifiers/examples/think_rag.py
+CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/trl_visit_site_no_think.py
 """
 
 TOOL_PROMPT = """
@@ -25,39 +25,37 @@ Available tools:
 
 When handling user queries:
 
-1. Think step-by-step about the query inside <think>...</think> tags:
+Think step-by-step about the query inside :
    - Break complex questions into smaller, searchable parts
    - Identify key search terms and parameters
    - Consider what information is needed to provide a complete answer
 
-2. When you need to search for information, call the web_search tool using this exact XML format:
+1. When you need to search for information, call the web_search tool using this exact XML format:
 <tool>
-{{"name": "web_search", "args": {{"query": "your search query here", "num_results": 5}}}}
+{{"name": "web_search", "args": {{"query": "your search query here"}}}}
 </tool>
 
-3. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
+2. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
 <tool>
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool>
 
-4. Tool results will appear inside <result>...</result> tags
+3. Tool results will appear inside <result>...</result> tags
 
-5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+4. You can call tools multiple times with refined queries if initial results don't contain sufficient information
 
-6. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
 Example query and response flow:
 User: "When was McDonald's founded and who was its founder?"
 
-<think>
 This question has two parts:
 1. The founding date of McDonald's
 2. The founder(s) of McDonald's
 I'll search for this information first, then visit specific pages if needed.
-</think>
 
 <tool>
-{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history", "num_results": 3}}}}
+{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
 </tool>
 
 <result>
@@ -70,6 +68,7 @@ Result 2:
 Title: Ray Kroc and McDonald's Expansion
 URL: doc_2
 Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
+...
 </result>
 
 <tool>
@@ -87,6 +86,7 @@ McDonald's was founded on May 15, 1940, in San Bernardino, California by brother
 <answer>
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
 </answer>
+/no_think
 """
 
 # Data
@@ -110,9 +110,9 @@ vf_env = vf.ToolEnv(
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
+model_name = "jan-hq/Qwen3-4B-v0.3-deepresearch-100-step"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "DeepSeek-R1-0528-Qwen3-8B-v0.3-deepresearch" # + model_name.split("/")[-1].lower()
+run_name = "Qwen3-4B-v0.4-deepresearch-no-think" 
 
 training_args = GRPOConfig(
     output_dir=f"outputs/{run_name}",
@@ -120,18 +120,18 @@ training_args = GRPOConfig(
     learning_rate=3e-6,
     lr_scheduler_type="constant_with_warmup",
     warmup_steps=10,
-    num_train_epochs=1,
-    temperature=0.6,
-    # top_p=0.95,
-    # top_k=20,
-    # min_p=0,
-    max_steps=400,  # 1 epoch = 139 steps
+    num_train_epochs=10,
+    temperature=0.7,
+    top_p=0.8,
+    top_k=20,
+    min_p=0,
+    max_steps=2000,  # 1 epoch = 139 steps
     bf16=True,
     max_grad_norm=0.1,
     num_iterations=4,
     beta=0.01,
     max_prompt_length=2048,
-    max_completion_length=8192,
+    max_completion_length=32768,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
     num_generations=8,
@@ -157,7 +157,7 @@ training_args = GRPOConfig(
     epsilon_high=0.28,
     mask_truncated_completions=True,
     push_to_hub=True,
-    hub_model_id="DeepSeek-R1-0528-Qwen3-8B-v0.3-deepresearch",
+    hub_model_id="Qwen3-4B-v0.4-deepresearch-no-think",
     # use_liger_loss=True,
     loss_type="dr_grpo",
 )
