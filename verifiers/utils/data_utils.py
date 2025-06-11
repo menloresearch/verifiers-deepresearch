@@ -1,3 +1,5 @@
+# NOTE: Helper functions for example datasets. Not intended for core functionality.
+
 import random
 import json
 from typing import List, Dict, Callable, Any
@@ -184,10 +186,10 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset.")
 
-def preprocess_dataset(name: str = "gsm8k",
-                       split: str | None = None,
-                       n: int | None = None,
-                       seed: int = 0) -> Dataset:
+def load_example_dataset(name: str = "gsm8k",
+                         split: str | None = None,
+                         n: int | None = None,
+                         seed: int = 0) -> Dataset:
     if name == "aime2024":
         if split is None:
             split = "train"
@@ -273,27 +275,3 @@ Please ensure that the dataset is formatted with 'prompt' (str) and 'answer' (st
     if "temp_answer" in dataset.column_names:
         dataset = dataset.rename_column("temp_answer", "answer")
     return dataset
-
-def format_prompt(prompt: str,
-                  system_prompt: str | None = None,
-                  few_shot: List[Dict[str, str]] | None = None,
-                  fewshot_prob: float = 1.0) -> List[Dict[str, str]]:
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    if few_shot and random.random() < fewshot_prob:
-        messages.extend(few_shot)
-    messages.append({"role": "user", "content": prompt})
-    return messages
-
-def format_dataset(dataset: Dataset,
-                   system_prompt: str | None = None,
-                   few_shot: List[Dict[str, str]] | None = None,
-                   fewshot_prob: float = 1.0,
-                   question_key: str = "question",
-                   answer_key: str = "answer",
-                   ) -> Dataset:
-    return dataset.map(lambda x: {
-        "prompt": format_prompt(x[question_key], system_prompt, few_shot, fewshot_prob),
-        "answer": x[answer_key]
-    }, num_proc=10)

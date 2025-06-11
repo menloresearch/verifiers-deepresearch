@@ -6,13 +6,18 @@ env/
 .env.local
 uv.lock
 CLAUDE.md
+.claude/
 .cursorrules
+.cursor/
 
 # artifacts
 dist/
 build/
+_build/
+docs/build/
 *.egg-info/
 */__pycache__/
+.pytest_cache/
 *.pyo
 *.pyd
 *.pyc
@@ -27,12 +32,10 @@ logs/
 .vscode/
 *.swp
 .DS_Store
-verifiers/envs/wordle_env.py
-verifiers/envs/textarena_env.py
 
 # WIPs
 wip/
 old/
-tests/
 scripts/
+tests/
 notebooks/
