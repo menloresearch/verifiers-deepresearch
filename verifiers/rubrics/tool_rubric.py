@@ -173,49 +173,45 @@ class ToolRubric(Rubric):
             response = str(self.parser.parse_answer(completion))
             reward = self.evaluate_code(response, answer, **kwargs)
         elif task == "qa":
-            try:
-                reward = self.qa_reward_func([completion], [ans], [t], **kwargs)[0]
-            except:
-                reward = None
+            reward = self.qa_reward_func(completion, answer, task, **kwargs)
         else:
             reward = 0.0
         return reward
 
-    def qa_reward_func(self, completions, answer, task, **kwargs) -> List[float | None]:
+    def qa_reward_func(self, completion, answer, task, **kwargs) -> float | None:
         """
         Reward function that checks if the QA answer matches the expected answer.
         Uses text normalization and either exact matching or substring matching.
         """
         match_mode = "substring"
-        rewards = []
-        for completion, ans, t in zip(completions, answer, task):
-            if t == "qa":
-                response = str(self.get_last_answer(completion))
+        
+        if task == "qa":
+            response = str(self.parser.parse_answer(completion))
 
-                # Try to parse the answer as a list of possible answers
-                try:
-                    answers = json.loads(ans)
-                    if isinstance(answers, str):
-                        answers = [answers]
-                    elif not isinstance(answers, list):
-                        answers = [str(answers)]
-                except json.JSONDecodeError:
-                    answers = [ans]
+            # Try to parse the answer as a list of possible answers
+            try:
+                answers = json.loads(answer)
+                if isinstance(answers, str):
+                    answers = [answers]
+                elif not isinstance(answers, list):
+                    answers = [str(answers)]
+            except json.JSONDecodeError:
+                answers = [answer]
 
-                # Get matching mode - default to exact match
-                # match_mode = kwargs.get("qa_match_mode", "exact")
-                if match_mode == "substring":
-                    reward = 1.0 if any(subem_check(response, answer) for answer in answers) else 0.0
-                else:
-                    reward = 1.0 if any(em_check(response, answer) for answer in answers) else 0.0
+            # Get matching mode - default to exact match
+            # match_mode = kwargs.get("qa_match_mode", "exact")
+            if match_mode == "substring":
+                reward = 1.0 if any(subem_check(response, ans) for ans in answers) else 0.0
             else:
-                reward = None
-            rewards.append(reward)
-        return rewards
+                reward = 1.0 if any(em_check(response, ans) for ans in answers) else 0.0
+        else:
+            reward = None
+        
+        return reward
 
                
 
-    def tool_execution_reward_func(self, completions: List[List[Dict[str, str]]], **kwargs) -> List[float]:
+    def tool_execution_reward_func(self, completion: List[Dict[str, str]], **kwargs) -> float:
         """
         Reward function that checks tool execution success.
 

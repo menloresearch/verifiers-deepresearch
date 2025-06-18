@@ -3,18 +3,24 @@ from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
-from verifiers.utils import preprocess_dataset
+from verifiers.utils import load_example_dataset
 
-os.environ["WANDB_PROJECT"] = "DeepResearch-v0.4-visit-site-no-think"
+os.environ["WANDB_PROJECT"] = "DeepResearch-v0.4-visit-site-no-think-test"
 """
 Multi-GPU training (single node, 2 training + 6 inference)
 # Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_serve.py --model 'jan-hq/Qwen3-4B-v0.3-deepresearch-100-step' \
-    --tensor_parallel_size 1 --data_parallel_size 4 --max_model_len 32768 --dtype bfloat16 \
-    --gpu_memory_utilization 0.9 --enable_prefix_caching True \
-    --host 0.0.0.0 --port 8000
+CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_server.py \
+    --model 'jan-hq/Qwen3-4B-v0.3-deepresearch-100-step' \
+    --tensor-parallel-size 2 \
+    --data_parallel_size 2 \
+    --max-model-len 16384 \
+    --dtype bfloat16 \
+    --gpu-memory-utilization 0.9 \
+    --enable-prefix-caching \
+    --host 0.0.0.0 \
+    --port 8000
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/trl_visit_site_no_think.py
+CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/trl_no_think.py
 """
 
 TOOL_PROMPT = """
@@ -90,12 +96,11 @@ McDonald's was founded on May 15, 1940, in San Bernardino, California. The origi
 """
 
 # Data
-train_dataset = preprocess_dataset(name="qa", split="train")
-# train_dataset = train_dataset.select(range(1000))
+train_dataset = load_example_dataset(name="qa", split="train")
 print(train_dataset)
 print(train_dataset[0])
 
-eval_dataset = preprocess_dataset(name="qa", split="test")
+eval_dataset = load_example_dataset(name="qa", split="test")
 
 vf_env = vf.ToolEnv(
     dataset=train_dataset,
@@ -110,64 +115,54 @@ vf_env = vf.ToolEnv(
 # print(vf_env.system_prompt)
 
 # model_name = Qwen/Qwen3-30B-A3B or Qwen/Qwen3-32B or Qwen/Qwen3-14B or Qwen/Qwen3-8B
-model_name = "jan-hq/Qwen3-4B-v0.3-deepresearch-100-step"
+model_name = "jan-hq/Qwen3-4B-no-think"
 model, tokenizer = vf.get_model_and_tokenizer(model_name)
-run_name = "Qwen3-4B-v0.4-deepresearch-no-think" 
+run_name = "Qwen3-4B-v0.4-deepresearch-no-think-4" 
 
-training_args = GRPOConfig(
-    output_dir=f"outputs/{run_name}",
-    run_name=run_name,
-    learning_rate=3e-6,
-    lr_scheduler_type="constant_with_warmup",
-    warmup_steps=10,
-    num_train_epochs=10,
-    temperature=0.7,
-    top_p=0.8,
-    top_k=20,
-    min_p=0,
-    max_steps=2000,  # 1 epoch = 139 steps
-    bf16=True,
-    max_grad_norm=0.1,
-    num_iterations=4,
-    beta=0.01,
-    max_prompt_length=2048,
-    max_completion_length=32768,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    num_generations=8,
-    gradient_accumulation_steps=4,
-    gradient_checkpointing=True,
-    # eval_strategy="steps",
-    # eval_steps=50,
-    # eval_accumulation_steps=1,
-    # eval_on_start=True,
-    save_strategy="steps",
-    save_steps=100,
-    save_only_model=True,
-    use_vllm=True,
-    vllm_server_host="10.200.108.158",
-    vllm_server_port=8000,
-    vllm_gpu_memory_utilization=0.9,
-    logging_steps=1,
-    log_on_each_node=False,
-    log_completions=True,
-    report_to="wandb",
-    reward_weights=vf_env.get_reward_weights(),
-    scale_rewards=False,
-    epsilon_high=0.28,
-    mask_truncated_completions=True,
-    push_to_hub=True,
-    hub_model_id="Qwen3-4B-v0.4-deepresearch-no-think",
-    # use_liger_loss=True,
-    loss_type="dr_grpo",
-)
-trainer = vf.GRPOEnvTrainer(
+training_args=vf.grpo_defaults(run_name=run_name)
+training_args.output_dir = f"outputs/{run_name}"
+training_args.learning_rate = 3e-6
+training_args.lr_scheduler_type = "constant_with_warmup"
+training_args.warmup_steps = 10
+training_args.num_train_epochs = 10
+training_args.temperature = 0.7
+training_args.top_p = 0.8
+training_args.top_k = 20
+training_args.min_p = 0
+training_args.max_steps = 2000
+training_args.bf16 = True
+training_args.max_grad_norm = 0.1
+training_args.num_iterations = 4
+training_args.beta = 0.01
+training_args.max_prompt_length = 2048
+training_args.max_completion_length = 4096
+training_args.per_device_train_batch_size = 1
+# training_args.per_device_eval_batch_size = 1
+training_args.num_generations = 6
+training_args.gradient_accumulation_steps = 4
+training_args.gradient_checkpointing = True
+training_args.save_strategy = "steps"
+training_args.save_steps = 100
+training_args.save_only_model = True
+training_args.use_vllm = True
+training_args.vllm_server_host = "0.0.0.0" #10.200.108.158
+training_args.vllm_server_port = 8000
+training_args.vllm_gpu_memory_utilization = 0.9
+training_args.logging_steps = 1
+training_args.log_on_each_node = False
+training_args.log_completions = True
+training_args.report_to = "wandb"
+training_args.scale_rewards = False
+training_args.epsilon_high = 0.28
+training_args.mask_truncated_completions = True
+training_args.push_to_hub = True
+training_args.hub_model_id = "Qwen3-4B-v0.4-deepresearch-no-think-4"
+training_args.loss_type = "dr_grpo"
+
+trainer = vf.GRPOTrainer(
     model=model,
     processing_class=tokenizer,
-    reward_funcs=vf_env.get_reward_funcs(),
     env=vf_env,
     args=training_args,
-    train_dataset=vf_env.get_dataset(),
-    eval_dataset=vf_env.get_eval_dataset(),
 )
 trainer.train()

@@ -374,7 +374,7 @@ class Environment(ABC):
             prompt_ids, prompt_mask, completion_ids, completion_mask
         """
         # tokenize just the prompt
-        prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=False) + "<|im_start|>assistant\n"
         assert isinstance(prompt_text, str)
         prompt_ids = processing_class.encode(prompt_text)
         prompt_mask = [1] * len(prompt_ids)
@@ -390,13 +390,19 @@ class Environment(ABC):
         for i, msg in enumerate(completion):
             # create conversation prefix: prompt + completion[:i+1]
             conversation_prefix = prompt + completion[:i+1]
-            
+
             # tokenize the full prefix
             prefix_text = processing_class.apply_chat_template(
                 conversation_prefix, 
                 tokenize=False, 
                 add_generation_prompt=False,
             )
+            if conversation_prefix[-1]['role'] == "assistant":
+                prefix_text = prefix_text.replace("<think>\n\n</think>\n\n", "")
+            # print("********prefix*********")
+            # print(prefix_text)
+            # print("***************************")
+
             assert isinstance(prefix_text, str), f"Expected string from apply_chat_template, got {type(prefix_text)}"
             current_ids = processing_class.encode(prefix_text)
             assert current_ids[:len(prev_ids)] == prev_ids, f"Tokenization difference in chat format. Current ids: {current_ids}, previous ids: {prev_ids}"
