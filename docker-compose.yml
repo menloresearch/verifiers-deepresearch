@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    shm_size: '1g'
+    ulimits:
+      memlock: -1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    environment:
+      - PATH=/app/venv/bin/:$PATH
+    volumes:
+      - ./train.sh:/app/train.sh
+      - ./outputs:/app/outputs/
+      - ./wandb:/app/wandb/
+      - ~/.cache:/root/.cache/
+    command: bash train.sh
+    restart: unless-stopped
+
+  inference:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    ports:
+      - "8000:8000"
+    shm_size: '1g'
+    ulimits:
+      memlock: -1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    environment:
+      - PATH=/app/venv/bin/:$PATH
+    #   - THREADS=${INFERENCE_THREADS:-4}
+    volumes:
+      - ./serve.sh:/app/serve.sh
+      - ~/.cache:/root/.cache/
+    command: bash serve.sh
+    restart: always

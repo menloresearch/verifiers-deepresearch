@@ -1,0 +1,9 @@
+./outputs
+./wandb
+./.venv
+./build
+docker-compose.yml
+train.sh 
+serve.sh
+Dockerfile.train
+Dockerfile.inference
