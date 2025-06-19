@@ -158,6 +158,7 @@ training_args.mask_truncated_completions = True
 training_args.push_to_hub = True
 training_args.hub_model_id = "Qwen3-4B-v0.4-deepresearch-no-think-4"
 training_args.loss_type = "dr_grpo"
+training_args.async_generation_timeout = 3600
 
 trainer = vf.GRPOTrainer(
     model=model,
