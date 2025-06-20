@@ -124,6 +124,8 @@ def parse_args():
                       help="Top-k sampling value")
     parser.add_argument("--min_p", type=float, default=0,
                       help="Minimum probability threshold")
+    parser.add_argument("--wandb_project", type=str, default=None,
+                      help="wandb project name")
     
     # Hardware/performance settings
     parser.add_argument("--per_device_train_batch_size", type=int, default=1,
@@ -205,12 +207,9 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.wandb_project:
+        os.environ["WANDB_PROJECT"] = args.wandb_project
     
-    os.environ["WANDB_PROJECT"] = "DeepResearch-v0.4-visit-site-no-think-test"
-    
-    TOOL_PROMPT = """
-    {{ original tool prompt from previous implementation }}
-    """
     
     train_dataset = load_example_dataset(name=args.train_dataset, split="train")
     

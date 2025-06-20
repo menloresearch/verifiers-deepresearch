@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.train
+    ipc: private 
     shm_size: '1g'
     ulimits:
       memlock: -1
@@ -15,13 +16,14 @@ services:
             - capabilities: [gpu]
     environment:
       - PATH=/app/venv/bin/:$PATH
+      - WANDB_API_KEY=
     volumes:
       - ./train.sh:/app/train.sh
       - ./outputs:/app/outputs/
       - ./wandb:/app/wandb/
       - ~/.cache:/root/.cache/
     command: bash train.sh
-    restart: unless-stopped
+    # restart: unless-stopped
 
   inference:
     build:
@@ -29,6 +31,7 @@ services:
       dockerfile: Dockerfile.inference
     ports:
       - "8000:8000"
+    ipc: private 
     shm_size: '1g'
     ulimits:
       memlock: -1

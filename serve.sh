@@ -7,7 +7,7 @@ export NCCL_DEBUG=INFO
  # --batch-request-timeout-seconds 36000 \
 CUDA_VISIBLE_DEVICES=0,1 python verifiers/inference/vllm_server.py \
     --model 'jan-hq/Qwen3-4B-v0.3-deepresearch-100-step' \
-    --tensor-parallel-size 1 \
+    --tensor-parallel-size 2 \
     --data-parallel-size 1 \
     --max-model-len 40960 \
     --dtype bfloat16 \
@@ -17,3 +17,4 @@ CUDA_VISIBLE_DEVICES=0,1 python verifiers/inference/vllm_server.py \
     --enforce-eager \
     --host 0.0.0.0 \
     --port 8000
+# trl vllm-serve --model jan-hq/Qwen3-4B-v0.3-deepresearch-100-step --gpu_memory_utilization 0.90 --port 8000 --tensor-parallel-size 2 --dtype bfloat16 --host 0.0.0.0 --enforce-eager false
