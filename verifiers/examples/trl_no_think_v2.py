@@ -92,9 +92,8 @@ McDonald's was founded on May 15, 1940, in San Bernardino, California by brother
 <answer>
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
 </answer>
-/no_think
 """
-
+# /no_think
 def parse_args():
     parser = argparse.ArgumentParser(description="Run DeepResearch training with configurable parameters")
     

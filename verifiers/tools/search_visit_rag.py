@@ -1,5 +1,6 @@
 import requests
 import re
+import os
 
 def web_search(query: str) -> str:
     """Enhanced search function that returns URLs and previews for each result.
@@ -10,7 +11,7 @@ def web_search(query: str) -> str:
     Returns:
         Formatted string with search results including URLs and previews
     """
-    server_url = "http://localhost:2223"
+    server_url = os.environ.get("RAG_SERVER_URL", "http://localhost:2223") 
     num_results = 10
     
     try:
@@ -76,7 +77,7 @@ def visit_tool(url: str) -> str:
     Returns:
         Full content of the page
     """
-    server_url = "http://localhost:2223"
+    server_url = os.environ.get("RAG_SERVER_URL", "http://localhost:2223") 
     
     try:
         # For RAG server, we need to query for the specific document

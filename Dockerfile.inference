@@ -27,6 +27,9 @@ RUN source venv/bin/activate && python -m pip install --upgrade pip setuptools w
 # Add any additional CUDA/GPU related packages if needed
 # RUN python -m pip install cupy-cuda12x
 
+COPY requirements.txt /app/
+RUN source venv/bin/activate && python -m pip install --no-cache-dir -r requirements.txt
+
 
 COPY . /app/
 RUN source venv/bin/activate && python -m pip install .[all]

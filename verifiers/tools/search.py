@@ -1,3 +1,4 @@
+import os
 def search_rag(query: str, num_results: int = 3) -> str:
     """Searches using FlashRAG server and returns formatted results.
     
@@ -13,7 +14,7 @@ def search_rag(query: str, num_results: int = 3) -> str:
     """
     import requests
     import json
-    server_url: str = "http://localhost:2223"
+    server_url = os.environ.get("RAG_SERVER_URL", "http://localhost:2223") 
     try:
         # Prepare the request payload
         payload = {

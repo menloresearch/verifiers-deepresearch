@@ -14,9 +14,11 @@ services:
         reservations:
           devices:
             - capabilities: [gpu]
+    network_mode: host
     environment:
       - PATH=/app/venv/bin/:$PATH
       - WANDB_API_KEY=
+      - RAG_SERVER_URL=http://localhost:2223
     volumes:
       - ./train.sh:/app/train.sh
       - ./outputs:/app/outputs/
@@ -29,8 +31,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.inference
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
+    network_mode: host
     ipc: private 
     shm_size: '1g'
     ulimits:

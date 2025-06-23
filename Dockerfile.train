@@ -29,12 +29,14 @@ RUN source venv/bin/activate && python3 -m pip install --upgrade pip setuptools 
 # RUN python -m pip install cupy-cuda12x
 
 # Create a working directory
-
+COPY requirements.txt /app/
+RUN source venv/bin/activate && python -m pip install --no-cache-dir -r requirements.txt
+RUN source venv/bin/activate && python3 -m pip install flash-attn --no-build-isolation
 
 COPY . /app/
 RUN source venv/bin/activate && python3 -m pip install .[all]
 
-RUN source venv/bin/activate && python3 -m pip install flash-attn --no-build-isolation
+
 # Recommended non-root user setup (optional)
 # RUN useradd -m appuser && chown -R appuser /app
 # USER appuser
