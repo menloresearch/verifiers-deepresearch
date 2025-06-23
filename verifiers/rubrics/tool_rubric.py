@@ -70,8 +70,8 @@ class ToolRubric(Rubric):
         ]
         self.reward_weights = [
             1.0,
-            0.2,
-            0.2,
+            0.0,
+            0.1,
         ]
         # fixme: harcoded for current strat. maybe you want to do for tool_name in self.tools.keys(): ...
         # Tool execution success reward
