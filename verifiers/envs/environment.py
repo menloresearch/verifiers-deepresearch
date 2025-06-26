@@ -377,12 +377,11 @@ class Environment(ABC):
         # tokenize just the prompt
         prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         assert isinstance(prompt_text, str)
-        self.logger.info("PROCESS CLASS Chat template: "+ str(processing_class.chat_template))
+        self.logger.debug("PROCESS CLASS Chat template: "+ str(processing_class.chat_template))
         
         pattern = r'<think>.*?</think>\s*'
         prompt_text = re.sub(pattern, '', prompt_text, flags=re.DOTALL)
-        self.logger.info("PROMPT TEXT: "+str(prompt_text))
-        # prompt_text = prompt_text.replace("<think>\n\n</think>\n\n", "")
+        self.logger.debug("PROMPT TEXT: "+str(prompt_text))
         prompt_ids = processing_class.encode(prompt_text)
         prompt_mask = [1] * len(prompt_ids)
         
@@ -406,13 +405,7 @@ class Environment(ABC):
             )
             
             prefix_text = re.sub(pattern, '', prefix_text, flags=re.DOTALL)
-            self.logger.info("PREFIX TEXT: "+str(prefix_text))
-            # if conversation_prefix[-1]['role'] == "assistant":
-            #     prefix_text = prefix_text.replace("<think>\n\n</think>\n\n", "")
-            
-            # print("********prefix*********")
-            # print(prefix_text)
-            # print("***************************")
+            self.logger.debug("PREFIX TEXT: "+str(prefix_text))
 
             assert isinstance(prefix_text, str), f"Expected string from apply_chat_template, got {type(prefix_text)}"
             current_ids = processing_class.encode(prefix_text)
@@ -437,7 +430,7 @@ class Environment(ABC):
             # Update previous tokenization for next iteration
             prev_ids = current_ids
             assert len(completion_ids) == len(completion_mask), f"Length mismatch in chat format. Completion ids: {completion_ids}, completion mask: {completion_mask}"
-            self.logger.info("PASSS")
+            self.logger.debug("PASSS")
         return prompt_ids, prompt_mask, completion_ids, completion_mask
 
     def process_completion_format(

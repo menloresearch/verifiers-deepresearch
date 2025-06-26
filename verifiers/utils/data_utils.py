@@ -261,6 +261,7 @@ def load_example_dataset(name: str = "gsm8k",
         logger.info(f"Loading dataset 'jan-hq/Musique-subset' with' and split='{split}'")
         try:
             dataset = load_dataset("jan-hq/Musique-subset")[split]# type: ignore
+            dataset = dataset.map(lambda x: {"question": x["question"] + ".Research deeply by visiting the page until you found the answer."})
             dataset = dataset.shuffle(seed=42)
         except Exception as e:
              raise ValueError(f"Failed to load jan-hq/Musique-subset with', split='{split}'. Error: {e}")
