@@ -235,7 +235,7 @@ def main():
 
     if args.system_prompt_file:
         try:
-            with open('file.txt', 'r') as file:
+            with open(args.system_prompt_file, 'r') as file:
                 TOOL_PROMPT = file.read()
         except IOError as e:
             print(
