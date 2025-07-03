@@ -105,124 +105,142 @@ Here are the rules you should always follow to solve your task:
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
 # /no_think
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run DeepResearch training with configurable parameters")
-    
+    parser = argparse.ArgumentParser(
+        description="Run DeepResearch training with configurable parameters")
+
     # Model and training configuration
     parser.add_argument("--model_name", type=str, default="jan-hq/Qwen3-4B-no-think",
-                      help="Model name or path")
+                        help="Model name or path")
     parser.add_argument("--run_name", type=str, default="Qwen3-4B-v0.4-deepresearch-no-think-4",
-                      help="Name for the training run")
+                        help="Name for the training run")
     parser.add_argument("--output_dir", type=str, default=None,
-                      help="Output directory path")
+                        help="Output directory path")
     parser.add_argument("--learning_rate", type=float, default=3e-6,
-                      help="Learning rate")
+                        help="Learning rate")
     parser.add_argument("--lr_scheduler_type", type=str, default="constant_with_warmup",
-                      choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
-                      help="Learning rate scheduler type")
+                        choices=["linear", "cosine", "cosine_with_restarts",
+                                 "polynomial", "constant", "constant_with_warmup"],
+                        help="Learning rate scheduler type")
     parser.add_argument("--warmup_steps", type=int, default=20,
-                      help="Number of warmup steps")
+                        help="Number of warmup steps")
     parser.add_argument("--num_train_epochs", type=int, default=5,
-                      help="Number of training epochs")
+                        help="Number of training epochs")
     parser.add_argument("--max_steps", type=int, default=2000,
-                      help="Maximum number of training steps")
+                        help="Maximum number of training steps")
     parser.add_argument("--temperature", type=float, default=0.7,
-                      help="Sampling temperature")
+                        help="Sampling temperature")
     parser.add_argument("--top_p", type=float, default=0.8,
-                      help="Top-p sampling value")
+                        help="Top-p sampling value")
     parser.add_argument("--top_k", type=int, default=20,
-                      help="Top-k sampling value")
+                        help="Top-k sampling value")
     parser.add_argument("--min_p", type=float, default=0,
-                      help="Minimum probability threshold")
+                        help="Minimum probability threshold")
     parser.add_argument("--wandb_project", type=str, default=None,
-                      help="wandb project name")
-    
+                        help="wandb project name")
+    parser.add_argument("--reward_correct_answer", type=float, default=1.0,
+                        help="Reward weight for correct answer")
+    parser.add_argument("--reward_tool_execution", type=float, default=0.2,
+                        help="Reward weight for tools execution")
+    parser.add_argument("--reward_format", type=float, default=0.2,
+                        help="Reward weight for format parser")
+    parser.add_argument("--system_prompt_file", type=str, default=None,
+                        help="Text file contains system prompt for training")
+
     # Hardware/performance settings
     parser.add_argument("--per_device_train_batch_size", type=int, default=1,
-                      help="Per device train batch size")
+                        help="Per device train batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
-                      help="Number of gradient accumulation steps")
+                        help="Number of gradient accumulation steps")
     parser.add_argument("--gradient_checkpointing", action="store_true", default=True,
-                      help="Enable gradient checkpointing")
+                        help="Enable gradient checkpointing")
     parser.add_argument("--max_grad_norm", type=float, default=0.1,
-                      help="Maximum gradient norm")
+                        help="Maximum gradient norm")
     parser.add_argument("--max_prompt_length", type=int, default=2048,
-                      help="Maximum prompt length")
+                        help="Maximum prompt length")
     parser.add_argument("--max_completion_length", type=int, default=4096,
-                      help="Maximum completion length")
-    
+                        help="Maximum completion length")
+
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
-                      help="Number of generations per prompt")
+                        help="Number of generations per prompt")
     parser.add_argument("--num_iterations", type=int, default=4,
-                      help="Number of PPO iterations")
+                        help="Number of PPO iterations")
     parser.add_argument("--beta", type=float, default=0.01,
-                      help="KL penalty coefficient")
+                        help="KL penalty coefficient")
     parser.add_argument("--scale_rewards", action="store_true", default=False,
-                      help="Scale rewards during training")
+                        help="Scale rewards during training")
     parser.add_argument("--epsilon_high", type=float, default=0.28,
-                      help="High threshold for advantage estimation")
+                        help="High threshold for advantage estimation")
     parser.add_argument("--mask_truncated_completions", action="store_true", default=True,
-                      help="Mask truncated completions")
+                        help="Mask truncated completions")
     parser.add_argument("--loss_type", type=str, default="dr_grpo",
-                      help="Type of loss function")
-    
+                        help="Type of loss function")
+
     # vLLM server settings
     parser.add_argument("--use_vllm", action="store_true", default=True,
-                      help="Whether to use vLLM server")
+                        help="Whether to use vLLM server")
     parser.add_argument("--vllm_server_host", type=str, default="0.0.0.0",
-                      help="vLLM server host")
+                        help="vLLM server host")
     parser.add_argument("--vllm_server_port", type=int, default=8000,
-                      help="vLLM server port")
+                        help="vLLM server port")
     parser.add_argument("--vllm_gpu_memory_utilization", type=float, default=0.9,
-                      help="GPU memory utilization for vLLM")
+                        help="GPU memory utilization for vLLM")
     parser.add_argument("--async_generation_timeout", type=int, default=3600,
-                      help="Timeout for async generation")
-    
+                        help="Timeout for async generation")
+
     # Dataset and environment settings
     parser.add_argument("--train_dataset", type=str, default="qa",
-                      help="Training dataset name")
+                        help="Training dataset name")
     parser.add_argument("--max_steps_env", type=int, default=5,
-                      help="Maximum environment steps (for ToolEnv)")
-    
+                        help="Maximum environment steps (for ToolEnv)")
+
     # Logging and saving
     parser.add_argument("--save_steps", type=int, default=100,
-                      help="Number of steps between saves")
+                        help="Number of steps between saves")
     parser.add_argument("--save_only_model", action="store_true", default=True,
-                      help="Save only model weights")
+                        help="Save only model weights")
     parser.add_argument("--logging_steps", type=int, default=1,
-                      help="Number of steps between logging")
+                        help="Number of steps between logging")
     parser.add_argument("--log_on_each_node", action="store_true", default=False,
-                      help="Log on each node in distributed training")
+                        help="Log on each node in distributed training")
     parser.add_argument("--log_completions", action="store_true", default=True,
-                      help="Log completions during training")
+                        help="Log completions during training")
     parser.add_argument("--report_to", type=str, default="wandb",
-                      help="Where to report metrics")
-    
+                        help="Where to report metrics")
+
     # Hub settings
     parser.add_argument("--push_to_hub", action="store_true", default=True,
-                      help="Push model to Hugging Face Hub")
+                        help="Push model to Hugging Face Hub")
     parser.add_argument("--hub_model_id", type=str, default=None,
-                      help="Hugging Face Hub model ID")
-    
+                        help="Hugging Face Hub model ID")
+
     # Precision
     parser.add_argument("--bf16", action="store_true", default=True,
-                      help="Use bfloat16 precision")
-    
+                        help="Use bfloat16 precision")
+
     return parser.parse_args()
 # Data
-
-
 
 
 def main():
     args = parse_args()
     if args.wandb_project:
         os.environ["WANDB_PROJECT"] = args.wandb_project
-    
-    
-    train_dataset = load_example_dataset(name=args.train_dataset, split="train")
-    
+
+    train_dataset = load_example_dataset(
+        name=args.train_dataset, split="train")
+
+    if args.system_prompt_file:
+        try:
+            with open('file.txt', 'r') as file:
+                TOOL_PROMPT = file.read()
+        except IOError as e:
+            print(
+                f"Error reading file: {e}, using default tool prompt:\n {TOOL_PROMPT}")
+
     vf_env = vf.ToolEnv(
         dataset=train_dataset,
         system_prompt=TOOL_PROMPT,
@@ -231,15 +249,16 @@ def main():
         tools=[web_search, visit_tool],
         max_steps=args.max_steps_env,
     )
-    
+    vf_env.rubric.reward_weights = [
+        args.reward_correct_answer, args.reward_tool_execution, args.reward_format]
+
     model, tokenizer = vf.get_model_and_tokenizer(args.model_name)
-    
+
     # Set output dir based on run name if not specified
     output_dir = args.output_dir if args.output_dir else f"outputs/{args.run_name}"
-    
+
     training_args = vf.grpo_defaults(run_name=args.run_name)
-    
-    
+
     # Map all arguments to training_args[]
     for arg_name, arg_value in vars(args).items():
         if hasattr(training_args, arg_name):
@@ -248,7 +267,7 @@ def main():
     # Set hub model ID if not specified
     if args.push_to_hub and not training_args.hub_model_id:
         training_args.hub_model_id = args.run_name
-    
+
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,
@@ -256,6 +275,7 @@ def main():
         args=training_args,
     )
     trainer.train()
+
 
 if __name__ == "__main__":
     main()
