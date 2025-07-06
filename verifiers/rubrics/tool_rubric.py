@@ -67,11 +67,15 @@ class ToolRubric(Rubric):
             self.correct_answer_reward_func,
             self.tool_execution_reward_func,    
             self.parser.get_format_reward_func(),
+            self.efficient_thinking_reward_func,
+            self.num_xml_reward_func
         ]
         self.reward_weights = [
             1.0,
-            0.0,
+            0.2,
+            0.2,
             0.1,
+            0.1
         ]
         # fixme: harcoded for current strat. maybe you want to do for tool_name in self.tools.keys(): ...
         # Tool execution success reward
@@ -177,6 +181,60 @@ class ToolRubric(Rubric):
         else:
             reward = 0.0
         return reward
+    
+    def efficient_thinking_reward_func(self,prompt, completion, answer, task, **kwargs ) -> float:
+        num_think_tag = 0
+        total_token = 0
+        for compl in completion:
+            if compl.get("role") == "assistant":
+                think_tags = re.findall(r'<think>(.*?)</think>', compl.get("content",""), re.DOTALL)
+                
+                for content in think_tags:
+                    num_think_tag += 1
+                    # Remove leading/trailing whitespace and split into tokens
+                    tokens = content.strip().split()
+                    total_token += len(tokens)
+        return 100*num_think_tag/(1+total_token/(num_think_tag+0.001))
+    
+    def num_xml_reward_func(self,prompt, completion, answer, task, **kwargs ) -> float:
+        import re
+
+        def find_num_tags(text:str,tag :str) -> int:
+            """
+            Finds all content between <smt>...</smt> tag pairs in a text string.
+            
+            Args:
+                text: Input string to search for tags
+                
+            Returns:
+                List of strings containing all text between tag pairs
+            """
+            # pattern = rf'<{tag}>(.*?)</{tag}>'
+            # pattern = rf'<{tag}>\s*(\{{.*?\}})\s*</{tag}>'
+            pattern = rf'<{tag}>\s*(\{{\s*".*?"\s*:\s*.+?\s*}})\s*</{tag}>'
+            return len(re.findall(pattern, text, flags=re.DOTALL))
+        
+        num_tool = 0
+        num_think = 0
+        num_answer = 0
+        total_reward = 2.0
+        for compl in completion:
+            if compl.get("role") == "assistant":
+                content = compl.get("content","")
+                num_tool += find_num_tags(content, "tool")
+                num_think += find_num_tags(content, "think")
+                num_answer += find_num_tags(content, "answer")
+                if content.count("<tool>") != content.count("</tool>") and (content.count("<tool>") > 0 or content.count("</tool>") >0):
+                    total_reward -= 1.
+                if content.count("<think>") != content.count("</think>") and (content.count("<think>") > 0 or content.count("</think>") >0):
+                    total_reward -= 1.
+                if content.count("<answer>") != content.count("</answer>") and (content.count("<answer>") > 0 or content.count("</answer>") >0):
+                    total_reward -= 1.
+
+                if find_num_tags(content, "tool") > 0 and find_num_tags(content, "answer") > 0 :
+                    total_reward -= 2.
+            
+        return total_reward
 
     def qa_reward_func(self, completion, answer, task, **kwargs) -> float | None:
         """

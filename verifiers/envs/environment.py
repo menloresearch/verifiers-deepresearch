@@ -377,11 +377,11 @@ class Environment(ABC):
         # tokenize just the prompt
         prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
         assert isinstance(prompt_text, str)
-        self.logger.debug("PROCESS CLASS Chat template: "+ str(processing_class.chat_template))
+        # self.logger.debug("PROCESS CLASS Chat template: "+ str(processing_class.chat_template))
         
-        pattern = r'<think>.*?</think>\s*'
-        prompt_text = re.sub(pattern, '', prompt_text, flags=re.DOTALL)
-        self.logger.debug("PROMPT TEXT: "+str(prompt_text))
+        # pattern = r'<think>.*?</think>\s*'
+        # prompt_text = re.sub(pattern, '', prompt_text, flags=re.DOTALL)
+        # print("PROMPT TEXT: "+str(prompt_text))
         prompt_ids = processing_class.encode(prompt_text)
         prompt_mask = [1] * len(prompt_ids)
         
@@ -391,6 +391,8 @@ class Environment(ABC):
         
         # previous tokenization (starts with just prompt)
         prev_ids = prompt_ids
+        prev_text = prompt_text
+        len_prompt_text = len(prompt_text)
         
         # process each completion message incrementally
         for i, msg in enumerate(completion):
@@ -403,9 +405,10 @@ class Environment(ABC):
                 tokenize=False, 
                 add_generation_prompt=False,
             )
-            
-            prefix_text = re.sub(pattern, '', prefix_text, flags=re.DOTALL)
-            self.logger.debug("PREFIX TEXT: "+str(prefix_text))
+            # print("PREFIX TEXT: "+str(conversation_prefix))
+            # print("*"*50)
+            print("PREFIX TEXT: "+str(prefix_text))
+            print("*"*50)
 
             assert isinstance(prefix_text, str), f"Expected string from apply_chat_template, got {type(prefix_text)}"
             current_ids = processing_class.encode(prefix_text)
@@ -428,7 +431,14 @@ class Environment(ABC):
             
             completion_mask.extend(msg_mask)
             # Update previous tokenization for next iteration
-            prev_ids = current_ids
+            # prev_ids = current_ids
+            cache_prompt_text = prefix_text[:len_prompt_text] 
+            pattern = r'<think>.*?</think>\s*'
+            remove_prefix_text = re.sub(pattern, '', prev_text[len_prompt_text:], flags=re.DOTALL)
+            prev_text = cache_prompt_text + remove_prefix_text
+            prev_ids = processing_class.encode(prev_text)
+            print("PREVIOUS TEXT: "+str(prev_text))
+            print("*"*50)
             assert len(completion_ids) == len(completion_mask), f"Length mismatch in chat format. Completion ids: {completion_ids}, completion mask: {completion_mask}"
             self.logger.debug("PASSS")
         return prompt_ids, prompt_mask, completion_ids, completion_mask
