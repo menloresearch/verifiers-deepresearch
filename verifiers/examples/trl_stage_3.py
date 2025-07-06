@@ -31,34 +31,36 @@ Available tools:
 
 When handling user queries:
 
-Think step-by-step about the query inside :
+1. Think step-by-step about the query inside <think>...</think> tags:
    - Break complex questions into smaller, searchable parts
    - Identify key search terms and parameters
    - Consider what information is needed to provide a complete answer
 
-1. When you need to search for information, call the web_search tool using this exact XML format:
+2. When you need to search for information, call the web_search tool using this exact XML format:
 <tool>
 {{"name": "web_search", "args": {{"query": "your search query here"}}}}
 </tool>
 
-2. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
+3. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
 <tool>
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool>
 
-3. Tool results will appear inside <result>...</result> tags
+4. Tool results will appear inside <result>...</result> tags
 
-4. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
 
-5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+6. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
 Example query and response flow:
 User: "When was McDonald's founded and who was its founder?"
 
+<think>
 This question has two parts:
 1. The founding date of McDonald's
 2. The founder(s) of McDonald's
 I'll search for this information first, then visit specific pages if needed.
+</think>
 
 <tool>
 {{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
@@ -102,7 +104,13 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
+6. Think EFFICIENTLY and SHORTLY with <think> ... </think> before answer with <answer> ... </answer>
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
+
+Don't over-think, think briefly, search first
+
+You have ability to use tools, you have ability to search by constructing the tool call do not need to repeat that to yourself.
+IMPORTANT: DON'T think EMPTY content!
 """
 # /no_think
 
@@ -130,9 +138,9 @@ def parse_args():
                         help="Number of training epochs")
     parser.add_argument("--max_steps", type=int, default=2000,
                         help="Maximum number of training steps")
-    parser.add_argument("--temperature", type=float, default=0.7,
+    parser.add_argument("--temperature", type=float, default=0.6,
                         help="Sampling temperature")
-    parser.add_argument("--top_p", type=float, default=0.8,
+    parser.add_argument("--top_p", type=float, default=0.95,
                         help="Top-p sampling value")
     parser.add_argument("--top_k", type=int, default=20,
                         help="Top-k sampling value")
@@ -200,7 +208,7 @@ def parse_args():
     # Logging and saving
     parser.add_argument("--save_steps", type=int, default=100,
                         help="Number of steps between saves")
-    parser.add_argument("--save_only_model", action="store_true", default=True,
+    parser.add_argument("--save_only_model", action="store_true", default=False,
                         help="Save only model weights")
     parser.add_argument("--logging_steps", type=int, default=1,
                         help="Number of steps between logging")
@@ -226,6 +234,7 @@ def parse_args():
 
 
 def main():
+    global TOOL_PROMPT
     args = parse_args()
     if args.wandb_project:
         os.environ["WANDB_PROJECT"] = args.wandb_project
@@ -250,7 +259,7 @@ def main():
         max_steps=args.max_steps_env,
     )
     vf_env.rubric.reward_weights = [
-        args.reward_correct_answer, args.reward_tool_execution, args.reward_format]
+        args.reward_correct_answer, args.reward_tool_execution, args.reward_format,1 , 0.1]
 
     model, tokenizer = vf.get_model_and_tokenizer(args.model_name)
 

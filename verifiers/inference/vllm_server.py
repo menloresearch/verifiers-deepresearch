@@ -42,7 +42,7 @@ from vllm.distributed.utils import StatelessProcessGroup
 from vllm.sampling_params import GuidedDecodingParams
 from vllm.utils import get_open_port
 from transformers import AutoTokenizer
-
+import jinja2, copy
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__) # Ensure logger is defined
@@ -59,6 +59,7 @@ batch_processor_task: Optional[asyncio.Task] = None
 
 # Global tokenizer for pre-checks
 proxy_tokenizer = None
+jinja2_chat_template = None
 
 # Generation tracking
 active_generation_count = 0
@@ -573,6 +574,13 @@ def llm_worker(
                 
                 # Call the method
                 result = method(*args, **kwargs)
+                if type(result) == list:
+                    try:
+                        for res in result:
+                            logger.info("Number of generated tokens: " + str(len(res.outputs[0].token_ids))+ " - " +str(len(res.prompt_token_ids)))
+                    except:
+                        # logger.info("Tasks is not completion")
+                        pass
                 
                 logger.debug(f"[WORKER {data_parallel_rank}] {method_name} completed, result type: {type(result)}")
                 
@@ -916,13 +924,29 @@ async def batch_processing_loop(
                                     # First, apply chat templates to all messages
                                     prompts_to_tokenize = []
                                     for messages in continue_chunk_inputs:
-                                        prompt = proxy_tokenizer.apply_chat_template(
-                                            messages,
-                                            tokenize=False,
-                                            add_generation_prompt=False,
-                                            continue_final_message=True
-                                        )
-                                        prompts_to_tokenize.append(prompt)
+                                        try:
+                                            prompt = proxy_tokenizer.apply_chat_template(
+                                                messages,
+                                                tokenize=False,
+                                                add_generation_prompt=False,
+                                                continue_final_message=True
+                                            )
+                                            prompts_to_tokenize.append(prompt)
+                                            # print(prompt)
+                                        except Exception as e:
+                                            print("error message ####")
+                                            print(messages)
+                                            print("####")
+                                            last_message_content = copy.copy(messages[-1]["content"])
+                                            messages[-1]["content"] = ""
+                                            prompt = jinja2_chat_template.render({"messages":messages, "add_generation_prompt": False})
+                                            prompt = prompt[:-10]
+                                            prompt += last_message_content
+                                            prompts_to_tokenize.append(prompt)
+                                            print(prompt)
+                                            # raise(e)
+                                           
+                                            
                                     
                                     # Batch tokenize all prompts at once
                                     tokenized = proxy_tokenizer(prompts_to_tokenize, return_tensors=None, add_special_tokens=False)
@@ -1316,6 +1340,7 @@ async def batch_processing_loop(
 def main(script_args: ScriptArguments):
     global request_queue, batch_processor_task # Allow lifespan to assign to these
     global proxy_tokenizer # Add this global
+    global jinja2_chat_template
 
     # Initialize proxy tokenizer for pre-checks
     proxy_tokenizer = AutoTokenizer.from_pretrained(
@@ -1323,6 +1348,10 @@ def main(script_args: ScriptArguments):
         revision=script_args.revision,
         trust_remote_code=True
     )
+    templateLoader = jinja2.FileSystemLoader(searchpath=script_args.model)
+    templateEnv = jinja2.Environment(loader=templateLoader)
+    
+    jinja2_chat_template = templateEnv.get_template("chat_template.jinja")
 
     # Spawn dp workers, and setup pipes for communication
     master_port = get_open_port()
