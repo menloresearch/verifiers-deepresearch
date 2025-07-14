@@ -381,7 +381,7 @@ class Environment(ABC):
         
         # pattern = r'<think>.*?</think>\s*'
         # prompt_text = re.sub(pattern, '', prompt_text, flags=re.DOTALL)
-        # print("PROMPT TEXT: "+str(prompt_text))
+        # self.logger.debug("PROMPT TEXT: "+str(prompt_text))
         prompt_ids = processing_class.encode(prompt_text)
         prompt_mask = [1] * len(prompt_ids)
         
@@ -405,10 +405,10 @@ class Environment(ABC):
                 tokenize=False, 
                 add_generation_prompt=False,
             )
-            # print("PREFIX TEXT: "+str(conversation_prefix))
-            # print("*"*50)
-            print("PREFIX TEXT: "+str(prefix_text))
-            print("*"*50)
+            # self.logger.debug("PREFIX TEXT: "+str(conversation_prefix))
+            # self.logger.debug("*"*50)
+            self.logger.debug("PREFIX TEXT: "+str(prefix_text))
+            self.logger.debug("*"*50)
 
             assert isinstance(prefix_text, str), f"Expected string from apply_chat_template, got {type(prefix_text)}"
             current_ids = processing_class.encode(prefix_text)
@@ -437,8 +437,8 @@ class Environment(ABC):
             remove_prefix_text = re.sub(pattern, '', prev_text[len_prompt_text:], flags=re.DOTALL)
             prev_text = cache_prompt_text + remove_prefix_text
             prev_ids = processing_class.encode(prev_text)
-            print("PREVIOUS TEXT: "+str(prev_text))
-            print("*"*50)
+            self.logger.debug("PREVIOUS TEXT: "+str(prev_text))
+            self.logger.debug("*"*50)
             assert len(completion_ids) == len(completion_mask), f"Length mismatch in chat format. Completion ids: {completion_ids}, completion mask: {completion_mask}"
             self.logger.debug("PASSS")
         return prompt_ids, prompt_mask, completion_ids, completion_mask

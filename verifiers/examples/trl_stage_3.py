@@ -29,71 +29,18 @@ Your primary purpose is to help users with tasks that require extensive online r
 Available tools:
 {tool_descriptions}
 
-When handling user queries:
+In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
 
-1. Think step-by-step about the query inside <think>...</think> tags:
-   - Break complex questions into smaller, searchable parts
-   - Identify key search terms and parameters
-   - Consider what information is needed to provide a complete answer
-
-2. When you need to search for information, call the web_search tool using this exact XML format:
-<tool>
+1. When you need to search for information, call the web_search tool using this exact XML format:
+<tool_call>
 {{"name": "web_search", "args": {{"query": "your search query here"}}}}
-</tool>
-
-3. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
-<tool>
+</tool_call>
+2. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
+<tool_call>
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
-</tool>
-
-4. Tool results will appear inside <result>...</result> tags
-
-5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
-
-6. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
-
-Example query and response flow:
-User: "When was McDonald's founded and who was its founder?"
-
-<think>
-This question has two parts:
-1. The founding date of McDonald's
-2. The founder(s) of McDonald's
-I'll search for this information first, then visit specific pages if needed.
-</think>
-
-<tool>
-{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
-</tool>
-
-<result>
-Result 1:
-Title: McDonald's Corporation History
-URL: doc_1
-Preview: McDonald's was founded in 1940 by Richard and Maurice McDonald in San Bernardino, California...
-
-Result 2:
-Title: Ray Kroc and McDonald's Expansion
-URL: doc_2
-Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
-...
-</result>
-
-<tool>
-{{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
-</tool>
-
-<result>
-Title: McDonald's Corporation History
-URL: doc_1
-
-Full Content:
-McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
-</result>
-
-<answer>
-McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
-</answer>
+</tool_call>
+3. Tool results will appear inside <result>...</result> tags
+4. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
 In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
 
@@ -104,13 +51,8 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
-6. Think EFFICIENTLY and SHORTLY with <think> ... </think> before answer with <answer> ... </answer>
+6. Remember to visit all the page you search using visit_page
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
-
-Don't over-think, think briefly, search first
-
-You have ability to use tools, you have ability to search by constructing the tool call do not need to repeat that to yourself.
-IMPORTANT: DON'T think EMPTY content!
 """
 # /no_think
 
@@ -208,7 +150,7 @@ def parse_args():
     # Logging and saving
     parser.add_argument("--save_steps", type=int, default=100,
                         help="Number of steps between saves")
-    parser.add_argument("--save_only_model", action="store_true", default=False,
+    parser.add_argument("--save_only_model", action="store_true", default=True,
                         help="Save only model weights")
     parser.add_argument("--logging_steps", type=int, default=1,
                         help="Number of steps between logging")
@@ -253,13 +195,13 @@ def main():
     vf_env = vf.ToolEnv(
         dataset=train_dataset,
         system_prompt=TOOL_PROMPT,
-        llm_fields=["think", ("tool", "answer")],
+        llm_fields=["think", ("tool_call", "answer")],
         few_shot=[],
         tools=[web_search, visit_tool],
-        max_steps=args.max_steps_env,
+        max_turns=args.max_steps_env,
     )
     vf_env.rubric.reward_weights = [
-        args.reward_correct_answer, args.reward_tool_execution, args.reward_format,1 , 0.1]
+        args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #
 
     model, tokenizer = vf.get_model_and_tokenizer(args.model_name)
 

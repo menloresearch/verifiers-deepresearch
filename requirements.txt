@@ -21,3 +21,4 @@ reasoning-gym
 smolagents==1.18.0
 textarena==0.6.4
 nltk==3.9.1
+hf_transfer==0.1.9

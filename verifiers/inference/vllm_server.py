@@ -873,10 +873,10 @@ async def batch_processing_loop(
                                     try:
                                         worker_idx, worker_conn = await get_next_worker_connection(connections)
                                         logger_instance.debug(f"Using worker {worker_idx} for first-chunk chat request")
-                                        llm_results = await async_send_and_recv(worker_conn, payload, timeout=60.0)
+                                        llm_results = await async_send_and_recv(worker_conn, payload, timeout=600.0)
                                         logger_instance.debug(f"Received {len(llm_results)} results from LLM for first-chunk chat")
                                     except asyncio.TimeoutError:
-                                        logger_instance.error(f"Worker {worker_idx} timeout for first-chunk chat after 60s")
+                                        logger_instance.error(f"Worker {worker_idx} timeout for first-chunk chat after 600s")
                                         for req_state in active_first_states:
                                             req_state.error = TimeoutError("Worker timeout during generation")
                                         llm_results = []
@@ -938,14 +938,17 @@ async def batch_processing_loop(
                                             print(messages)
                                             print("####")
                                             last_message_content = copy.copy(messages[-1]["content"])
-                                            messages[-1]["content"] = ""
+                                            # messages[-1]["content"] = ""
                                             prompt = jinja2_chat_template.render({"messages":messages, "add_generation_prompt": False})
-                                            prompt = prompt[:-10]
-                                            prompt += last_message_content
+                                            prompt = prompt[:-11]
+                                            
+                                            # prompt += last_message_content
                                             prompts_to_tokenize.append(prompt)
+                                            last_message_content = prompt.split("<|im_start|>assistant\n")[-1]
+                                            messages[-1]["content"] = last_message_content
                                             print(prompt)
                                             # raise(e)
-                                           
+                                            
                                             
                                     
                                     # Batch tokenize all prompts at once
@@ -991,10 +994,10 @@ async def batch_processing_loop(
                                     try:
                                         worker_idx, worker_conn = await get_next_worker_connection(connections)
                                         logger_instance.debug(f"Using worker {worker_idx} for continue-chunk chat request")
-                                        llm_results = await async_send_and_recv(worker_conn, payload, timeout=60.0)
+                                        llm_results = await async_send_and_recv(worker_conn, payload, timeout=600.0)
                                         logger_instance.debug(f"Received {len(llm_results)} results from LLM for continue-chunk chat")
                                     except asyncio.TimeoutError:
-                                        logger_instance.error(f"Worker {worker_idx} timeout for continue-chunk chat after 60s")
+                                        logger_instance.error(f"Worker {worker_idx} timeout for continue-chunk chat after 600s")
                                         for req_state in active_continue_states:
                                             req_state.error = TimeoutError("Worker timeout during generation")
                                         llm_results = []

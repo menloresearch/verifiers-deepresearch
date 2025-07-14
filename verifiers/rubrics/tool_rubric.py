@@ -1,12 +1,28 @@
 import json
 import random
 import re
+import os
 import string
 from typing import Callable, Dict, List
-
+from scipy.stats import skewnorm
 from verifiers.parsers import Parser, XMLParser
 from verifiers.rubrics import Rubric
 
+def calculate_skewed_penalty(x, center=70, skewness=5, scale=200):
+    """
+    Calculate penalty value based on skewed normal distribution.
+    
+    Args:
+        x: Input value(s) to evaluate
+        center: Location parameter (center/mode of distribution)
+        skewness: Controls skew direction and magnitude (negative = left skew)
+        scale: Controls width of distribution
+    
+    Returns:
+        y: Penalty value(s) corresponding to input x
+    """
+    max_y = 0.0036056853513317067 ## base on center=70, skewness=5, scale=200
+    return skewnorm.pdf(x, a=skewness, loc=center, scale=scale)/max_y
 
 def normalize_answer(s):
     def remove_articles(text):
@@ -50,10 +66,25 @@ def subem_check(prediction, golden_answers):
             break
     return score
 
+def find_num_tags(text:str,tag :str) -> int:
+            """
+            Finds all content between <smt>...</smt> tag pairs in a text string.
+            
+            Args:
+                text: Input string to search for tags
+                
+            Returns:
+                List of strings containing all text between tag pairs
+            """
+            pattern = rf'<{tag}>(.*?)</{tag}>'
+            # pattern = rf'<{tag}>\s*(\{{.*?\}})\s*</{tag}>'
+            if tag == "tool_call":
+                pattern = rf'<{tag}>\s*(\{{\s*".*?"\s*:\s*.+?\s*}})\s*</{tag}>'
+            return len(re.findall(pattern, text, flags=re.DOTALL))
 
 class ToolRubric(Rubric):
     def __init__(self,
-                 parser: Parser = XMLParser(fields=["reasoning", ("tool", "answer")]),
+                 parser: Parser = XMLParser(fields=["reasoning", ("tool_call", "answer")]),
                  env_parser: Parser = XMLParser(fields=["result"]),
                  tools: List[Callable] = []):
         super().__init__(parser=parser)
@@ -66,17 +97,23 @@ class ToolRubric(Rubric):
         self.reward_funcs = [
             self.correct_answer_reward_func,
             self.tool_execution_reward_func,    
+            # self.format_reward_func_wrapper,
             self.parser.get_format_reward_func(),
             self.efficient_thinking_reward_func,
-            self.num_xml_reward_func
+            self.num_xml_reward_func,
+            self.visit_tool_reward_func,
+            self.avg_thinking_length_func
         ]
         self.reward_weights = [
             1.0,
             0.2,
             0.2,
             0.1,
-            0.1
+            0.1,
+            0.6,
+            0.
         ]
+        self.think_mode = os.environ.get("THINK_MODE", True)
         # fixme: harcoded for current strat. maybe you want to do for tool_name in self.tools.keys(): ...
         # Tool execution success reward
         # for tool_name in self.tools.keys():
@@ -164,9 +201,14 @@ class ToolRubric(Rubric):
             sys.stdin = sys.__stdin__
 
         return passed / total_cases if total_cases else 0.0
+    
  
     def correct_answer_reward_func(self, completion, answer, task, **kwargs) -> float:
         """Reward function that checks if the final answer matches the expected answer."""
+        if self.think_mode:
+            check_xml = self.num_xml_reward_func(completion=completion)
+        else:
+            check_xml = 1.
         if task == "mc":
             response = str(self.parser.parse_answer(completion))
             reward = 1.0 if response == answer.strip() else 0.0
@@ -177,63 +219,93 @@ class ToolRubric(Rubric):
             response = str(self.parser.parse_answer(completion))
             reward = self.evaluate_code(response, answer, **kwargs)
         elif task == "qa":
-            reward = self.qa_reward_func(completion, answer, task, **kwargs)
+            reward = self.qa_reward_func(completion, answer, task, **kwargs) #* check_xml
         else:
             reward = 0.0
         return reward
-    
-    def efficient_thinking_reward_func(self,prompt, completion, answer, task, **kwargs ) -> float:
-        num_think_tag = 0
-        total_token = 0
-        for compl in completion:
-            if compl.get("role") == "assistant":
-                think_tags = re.findall(r'<think>(.*?)</think>', compl.get("content",""), re.DOTALL)
-                
-                for content in think_tags:
-                    num_think_tag += 1
-                    # Remove leading/trailing whitespace and split into tokens
-                    tokens = content.strip().split()
-                    total_token += len(tokens)
-        return 100*num_think_tag/(1+total_token/(num_think_tag+0.001))
-    
-    def num_xml_reward_func(self,prompt, completion, answer, task, **kwargs ) -> float:
-        import re
-
-        def find_num_tags(text:str,tag :str) -> int:
-            """
-            Finds all content between <smt>...</smt> tag pairs in a text string.
-            
-            Args:
-                text: Input string to search for tags
-                
-            Returns:
-                List of strings containing all text between tag pairs
-            """
-            # pattern = rf'<{tag}>(.*?)</{tag}>'
-            # pattern = rf'<{tag}>\s*(\{{.*?\}})\s*</{tag}>'
-            pattern = rf'<{tag}>\s*(\{{\s*".*?"\s*:\s*.+?\s*}})\s*</{tag}>'
-            return len(re.findall(pattern, text, flags=re.DOTALL))
-        
-        num_tool = 0
-        num_think = 0
-        num_answer = 0
-        total_reward = 2.0
+    def avg_thinking_length_func(self, completion,  **kwargs ) -> float:
+        num_think_tag = 0.
+        total_token = 0.
         for compl in completion:
             if compl.get("role") == "assistant":
                 content = compl.get("content","")
-                num_tool += find_num_tags(content, "tool")
+                # If the message doesn't call tool or contains answer then we don't calculate reward for it
+                if find_num_tags(content, "tool_call") == 0 or find_num_tags(content, "answer") > 0 :
+                    continue
+                # invalid format also reward 0.
+                if content.count("<think>") != content.count("</think>") and (content.count("<think>") > 0 or content.count("</think>") >0):
+                    return 0.
+                
+                if "[ERROR] max_tokens_reached" in content:
+                    return 0.
+                
+                think_tags = re.findall(r'<think>(.*?)</think>', content, re.DOTALL)
+                for content_ in think_tags:
+                    # Remove leading/trailing whitespace and split into tokens
+                    tokens = content_.strip().split()
+                    num_think_tag += 1
+                    total_token += len(tokens)
+        if num_think_tag > 0:
+            avg_length = total_token/num_think_tag
+            return avg_length
+        return 0.
+    
+    def efficient_thinking_reward_func(self, completion,  **kwargs ) -> float:
+        num_think_tag = 0.
+        total_token = 0.
+        for compl in completion:
+            if compl.get("role") == "assistant":
+                content = compl.get("content","")
+                # If the message doesn't call tool or contains answer then we don't calculate reward for it
+                if find_num_tags(content, "tool_call") == 0 or find_num_tags(content, "answer") > 0 :
+                    continue
+                # invalid format also reward 0.
+                if content.count("<think>") != content.count("</think>") and (content.count("<think>") > 0 or content.count("</think>") >0):
+                    return 0.
+                
+                if "[ERROR] max_tokens_reached" in content:
+                    return 0.
+                
+                think_tags = re.findall(r'<think>(.*?)</think>', content, re.DOTALL)
+                for content_ in think_tags:
+                    # Remove leading/trailing whitespace and split into tokens
+                    tokens = content_.strip().split()
+                    num_think_tag += 1
+                    total_token += len(tokens)
+        if num_think_tag > 0:
+            avg_length = total_token/num_think_tag
+            return calculate_skewed_penalty(avg_length)
+        return 0.
+    
+    def num_xml_reward_func(self, completion,**kwargs ) -> float:
+        import re
+        num_tool = 0.
+        num_think = 0.
+        num_answer = 0.
+        total_reward = 0.
+        num_turn = 0.
+        for compl in completion:
+            if compl.get("role") == "assistant":
+                num_turn += 1
+                content = compl.get("content","")
+                num_tool += find_num_tags(content, "tool_call")
                 num_think += find_num_tags(content, "think")
                 num_answer += find_num_tags(content, "answer")
-                if content.count("<tool>") != content.count("</tool>") and (content.count("<tool>") > 0 or content.count("</tool>") >0):
-                    total_reward -= 1.
+                if "[ERROR] max_tokens_reached" in content:
+                    return 0.
+                if content.count("<tool_call>") != content.count("</tool_call>") and (content.count("<tool_call>") > 0 or content.count("</tool_call>") >0):
+                    return 0.
                 if content.count("<think>") != content.count("</think>") and (content.count("<think>") > 0 or content.count("</think>") >0):
-                    total_reward -= 1.
+                    return 0.
                 if content.count("<answer>") != content.count("</answer>") and (content.count("<answer>") > 0 or content.count("</answer>") >0):
-                    total_reward -= 1.
+                    return 0. # total_reward -= 2*abs(content.count("<answer>") - content.count("</answer>") )
 
-                if find_num_tags(content, "tool") > 0 and find_num_tags(content, "answer") > 0 :
-                    total_reward -= 2.
-            
+                if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "answer") > 0 :
+                    return 0. # total_reward -= 2
+                if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "result") > 0 :
+                    return 0. # total_reward -= 2
+        if num_turn > 0:
+            total_reward += num_answer*(num_think + num_tool)/num_turn
         return total_reward
 
     def qa_reward_func(self, completion, answer, task, **kwargs) -> float | None:
@@ -267,7 +339,46 @@ class ToolRubric(Rubric):
         
         return reward
 
-               
+    def visit_tool_reward_func(self, completion: List[Dict[str, str]], **kwargs) -> float:
+        """
+        Reward function that checks tool execution success.
+
+        Uses XMLParser to identify proper tool calls.
+        """
+        tool_attempts = 0
+        successful_executions = 0
+        set_tools = set()
+        num_visit = 0
+        num_search = 0
+        
+        # Find assistant messages with tools and their responses
+        for i, msg in enumerate(completion):
+            if msg['role'] == 'assistant':
+                # Use parser to check for tool tag
+                parsed = self.parser.parse(msg['content'])
+                if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
+                    # Found a properly formatted tool message
+                    if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
+                        tool_attempts += 1
+                        # Check response with env_parser
+                        parsed_response = self.env_parser.parse(completion[i + 1]['content'])
+                        if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
+                            successful_executions += 1
+                            tool_name = json.loads(parsed.tool_call).get("name")
+                            if tool_name == "visit_tool":
+                                num_visit += 1
+                            elif tool_name == "web_search":
+                                num_search += 1
+        
+        
+        # Calculate reward
+        if tool_attempts == 0 or num_search == 0 :
+            return -0.5
+        x = num_visit/num_search
+        if x < 1:
+            return -0.5
+        else:
+            return ((x-1)/4)**0.25            
 
     def tool_execution_reward_func(self, completion: List[Dict[str, str]], **kwargs) -> float:
         """
@@ -277,13 +388,14 @@ class ToolRubric(Rubric):
         """
         tool_attempts = 0
         successful_executions = 0
+        set_tools = set()
         
         # Find assistant messages with tools and their responses
         for i, msg in enumerate(completion):
             if msg['role'] == 'assistant':
                 # Use parser to check for tool tag
                 parsed = self.parser.parse(msg['content'])
-                if hasattr(parsed, 'tool') and parsed.tool is not None:
+                if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                     # Found a properly formatted tool message
                     if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
                         tool_attempts += 1
@@ -291,11 +403,19 @@ class ToolRubric(Rubric):
                         parsed_response = self.env_parser.parse(completion[i + 1]['content'])
                         if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
                             successful_executions += 1
+                            tool_name = json.loads(parsed.tool_call).get("name")
+                            if tool_name:
+                                set_tools.add(tool_name)
+        
         
         # Calculate reward
         if tool_attempts == 0:
             return 0.0
-        return (successful_executions / tool_attempts)
+        if self.think_mode:
+            check_xml = self.num_xml_reward_func(completion=completion)
+        else:
+            check_xml = 1.
+        return (successful_executions * len(set_tools) / tool_attempts) #* check_xml 
     
     def get_named_tool_reward_func(self, tool_name: str) -> Callable:
         """
@@ -319,9 +439,9 @@ class ToolRubric(Rubric):
                 if msg['role'] == 'assistant':
                     # Use parser to check for tool tag
                     parsed = self.parser.parse(msg['content'])
-                    if hasattr(parsed, 'tool') and parsed.tool is not None:
+                    if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                         try:
-                            command = json.loads(parsed.tool)
+                            command = json.loads(parsed.tool_call)
                             if isinstance(command, dict) and command.get("name") == tool_name:
                                 # Found a properly formatted tool message for the specific tool
                                 if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
@@ -356,9 +476,9 @@ class ToolRubric(Rubric):
             for i, msg in enumerate(completion):
                 if msg['role'] == 'assistant':
                         parsed = self.parser.parse(msg['content'])
-                        if hasattr(parsed, 'tool') and parsed.tool is not None:
+                        if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                             try:
-                                command = json.loads(parsed.tool)
+                                command = json.loads(parsed.tool_call)
                                 if isinstance(command, dict) and command.get("name") == tool_name:
                                     # Found a properly formatted tool message for the specific tool
                                     if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
@@ -386,9 +506,9 @@ class ToolRubric(Rubric):
             for i, msg in enumerate(completion):
                 if msg['role'] == 'assistant':
                     parsed = self.parser.parse(msg['content'])
-                    if hasattr(parsed, 'tool') and parsed.tool is not None:
+                    if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                         try:
-                            command = json.loads(parsed.tool)
+                            command = json.loads(parsed.tool_call)
                             if isinstance(command, dict) and command.get("name") == tool_name:
                                 attempted_executions += 1
                         except json.JSONDecodeError:

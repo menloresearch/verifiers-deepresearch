@@ -81,7 +81,7 @@ class ToolEnv(MultiTurnEnv):
     def __init__(self,
                  tools: List[Callable] = [],
                  system_prompt: str = DEFAULT_TOOL_PROMPT_TEMPLATE,
-                 parser: XMLParser = XMLParser(fields=["think", ("tool", "answer")]),
+                 parser: XMLParser = XMLParser(fields=["think", ("tool_call", "answer")]),
                  env_parser: XMLParser = XMLParser(fields=["result"]),
                  max_turns: int = 10, **kwargs):
         # Infer schemas from tool functions
@@ -148,8 +148,8 @@ class ToolEnv(MultiTurnEnv):
         try:
             parsed = self.parser.parse(messages[-1]['content'])
             # Check if we got a valid tool field (not just None from failed parsing)
-            if hasattr(parsed, 'tool') and parsed.tool is not None:
-                result = self.call_tool(parsed.tool)
+            if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
+                result = self.call_tool(parsed.tool_call)
                 if len(result.strip()) > 0:
                     return {'role': 'user', 'content': self.env_parser.format(result=result)}, {}
                 else:

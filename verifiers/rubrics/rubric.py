@@ -1,7 +1,7 @@
 import asyncio
 from asyncio import Semaphore
 import concurrent.futures
-
+import math
 import inspect
 import logging
 from typing import List, Dict, Any, Union
@@ -120,9 +120,20 @@ class Rubric:
         ]
         reward_scores = await asyncio.gather(*futures)
         rewards = {func.__name__: reward for func, reward in zip(self.get_reward_funcs(), reward_scores)}
-        rewards['reward'] = sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
+        correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = [reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())]
+        
+        if num_xml_reward == 0.:
+            b = -0.5
+            # format_efficiency_reward = -0.5
+        else:
+            b = tool_execution_reward + format_func + efficient_thinking_reward + num_xml_reward
+        
+        format_efficiency_reward = (correct_answer_reward)*math.log(1.001 + correct_answer_reward*b ) # sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
+        rewards["format_and_efficient_reward"] = format_efficiency_reward
+        # correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = reward_scores
+        rewards['reward'] = format_efficiency_reward  # 0.3 * correct_answer_reward + 0.1*format_efficiency_reward + 0.6*visit_tool_reward
         return rewards
-
+    
     async def _score_single(self, semaphore, *pcast, **kw):
         async with semaphore:
             return await self.score_rollout(*pcast, **kw)

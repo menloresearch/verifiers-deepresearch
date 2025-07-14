@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.train
     ipc: private 
-    shm_size: '1g'
+    shm_size: '2g'
     ulimits:
       memlock: -1
     deploy:
@@ -17,7 +17,7 @@ services:
     network_mode: host
     environment:
       - PATH=/app/venv/bin/:$PATH
-      - WANDB_API_KEY=
+      - WANDB_API_KEY=de8d037779af70199106db0710f417f5157c1818
       - RAG_SERVER_URL=http://localhost:2223
     volumes:
       - ./train.sh:/app/train.sh
@@ -35,7 +35,7 @@ services:
     #   - "8000:8000"
     network_mode: host
     ipc: private 
-    shm_size: '1g'
+    shm_size: '2g'
     ulimits:
       memlock: -1
     deploy:
