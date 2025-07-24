@@ -151,6 +151,7 @@ class Rubric:
             func.__name__: reward
             for func, reward in zip(self.get_reward_funcs(), reward_scores)
         }
+        print(self.get_reward_weights(), reward_scores, self.get_reward_funcs())
         correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = [reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())]
         
         if num_xml_reward == 0.:

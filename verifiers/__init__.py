@@ -25,6 +25,7 @@ from .envs.env_group import EnvGroup
 from .envs.environment import Environment
 from .envs.multiturn_env import MultiTurnEnv
 from .envs.singleturn_env import SingleTurnEnv
+from .envs.old_tool_env import ToolEnv as OldToolEnv
 from .envs.tool_env import ToolEnv
 from .parsers.parser import Parser
 from .parsers.think_parser import ThinkParser
@@ -109,6 +110,7 @@ __all__ = [
     "MultiTurnEnv",
     "SingleTurnEnv",
     "ToolEnv",
+    "OldToolEnv"
     "EnvGroup",
     "extract_boxed_answer",
     "extract_hash_answer",

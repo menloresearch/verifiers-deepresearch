@@ -4,8 +4,9 @@ import os
 import string
 from typing import Callable, Dict, List
 from scipy.stats import skewnorm
-from verifiers.parsers import Parser, XMLParser
-from verifiers.rubrics import Rubric
+from verifiers.parsers.parser import Parser
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.rubric import Rubric
 
 
 def calculate_skewed_penalty(x, center=70, skewness=5, scale=200):

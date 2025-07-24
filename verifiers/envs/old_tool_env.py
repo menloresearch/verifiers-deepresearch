@@ -2,13 +2,10 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Tuple
 
-from verifiers import (
-    Message,
-    Messages,
-    MultiTurnEnv,
-    RewardFunc,
-    State,
-    ToolRubric,
+from verifiers.rubrics.tool_rubric import ToolRubric
+from verifiers.envs.multiturn_env import MultiTurnEnv
+from verifiers.types import Message, Messages, State, RewardFunc
+from verifiers.parsers.xml_parser import (
     XMLParser,
 )
 
@@ -100,7 +97,7 @@ class ToolEnv(MultiTurnEnv):
         tools: List[Callable] = [],
         system_prompt: str = "",
         format_prompt: bool = True,
-        parser: XMLParser = XMLParser(fields=["think", ("tool", "answer")]),
+        parser: XMLParser = XMLParser(fields=["think", ("tool_call", "answer")]),
         env_parser: XMLParser = XMLParser(fields=["result"]),
         max_turns: int = 10,
         **kwargs,
@@ -181,21 +178,21 @@ class ToolEnv(MultiTurnEnv):
         try:
             parsed = self.parser.parse(messages[-1]["content"])
             # Check if we got a valid tool field (not just None from failed parsing)
-            if hasattr(parsed, "tool") and parsed.tool is not None:
-                result = self.call_tool(parsed.tool)
+            if hasattr(parsed, "tool_call") and parsed.tool_call is not None:
+                result = self.call_tool(parsed.tool_call)
                 if len(result.strip()) > 0:
-                    return {
+                    return [{
                         "role": "user",
                         "content": self.env_parser.format(result=result),
-                    }, state
+                    }], state
                 else:
-                    return {
+                    return [{
                         "role": "user",
                         "content": "Error: Tool execution returned empty output.",
-                    }, state
+                    }], state
         except Exception:
             pass
-        return {
+        return [{
             "role": "user",
             "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
-        }, state
+        }], state

@@ -3,7 +3,7 @@ from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
-from verifiers.utils import load_example_dataset
+from verifiers.utils.data_utils import load_example_dataset
 import argparse
 
 """
@@ -116,7 +116,7 @@ def parse_args():
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
                         help="Number of generations per prompt")
-    parser.add_argument("--num_iterations", type=int, default=4,
+    parser.add_argument("--num_iterations", type=int, default=1,
                         help="Number of PPO iterations")
     parser.add_argument("--beta", type=float, default=0.01,
                         help="KL penalty coefficient")
@@ -166,6 +166,8 @@ def parse_args():
                         help="Push model to Hugging Face Hub")
     parser.add_argument("--hub_model_id", type=str, default=None,
                         help="Hugging Face Hub model ID")
+    parser.add_argument("--hub_private_repo", type=str, default=True,
+                        help="Hugging Face Hub private repo")
 
     # Precision
     parser.add_argument("--bf16", action="store_true", default=True,
@@ -192,7 +194,7 @@ def main():
             print(
                 f"Error reading file: {e}, using default tool prompt:\n {TOOL_PROMPT}")
 
-    vf_env = vf.ToolEnv(
+    vf_env = vf.OldToolEnv(
         dataset=train_dataset,
         system_prompt=TOOL_PROMPT,
         llm_fields=["think", ("tool_call", "answer")],
