@@ -1,141 +1,180 @@
-# Verifiers
+# Verifiers Documentation
 
-**Note: These docs are mostly written by Claude 4 Opus. Many things are wrong. This is here as a starting point for me to work from, and they will be gradually improved over time.**
-
-Verifiers is a flexible framework for reinforcement learning with large language models. It provides modular components for creating evaluation environments, parsing structured outputs, and training models using automated reward signals.
-
-## What does it do?
-
-Verifiers enables you to:
-
-- **Build custom evaluation environments** for any task
-- **Define multi-criteria reward functions** for nuanced evaluation  
-- **Train models using GRPO** (Group Relative Policy Optimization)
-- **Parse structured outputs** reliably with built-in validation
-- **Integrate tools** to extend model capabilities
-
-The framework emphasizes modularity and composability, allowing you to start simple and progressively add complexity as needed.
-
-## Documentation
-
-```{toctree}
-:maxdepth: 2
-:caption: Getting Started:
-
-overview
-examples
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Core Components:
-
-environments
-parsers
-rubrics
-tools
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Training & Advanced:
-
-training
-advanced
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Reference:
-
-api_reference
-testing
-development
-```
+Welcome to the Verifiers documentation! Verifiers is a flexible framework for reinforcement learning with large language models (LLMs). It provides a modular architecture for creating evaluation environments, parsing structured outputs, and training models using automated reward signals.
 
 ## Quick Start
 
-### Installation
-
-```bash
-# Install the package
-pip install verifiers
-
-# Or using uv
-uv add verifiers
-```
-
-### Basic Example
+Get started with Verifiers in minutes:
 
 ```python
-from verifiers.envs import SingleTurnEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
-import openai
+import verifiers as vf
 
-# 1. Define output format
-parser = XMLParser(fields=["think", "answer"])
+# Load a dataset
+dataset = vf.load_example_dataset("gsm8k", split="train")
 
-# 2. Create evaluation criteria
-def correct_answer(completion, answer, **kwargs):
-    parsed = parser.parse(completion)
-    return 1.0 if parsed.answer == answer else 0.0
-
-rubric = Rubric(
-    funcs=[correct_answer, parser.get_format_reward_func()],
-    weights=[0.8, 0.2]
-)
-
-# 3. Set up environment
-env = SingleTurnEnv(
-    dataset=your_dataset, # with 'question' and 'answer' string columns
-    parser=parser,
-    rubric=rubric,
+# Create a simple environment
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
     system_prompt="Solve the problem step by step.",
-    client=openai.Client()
+    parser=vf.ThinkParser(),
+    rubric=vf.Rubric(funcs=[correct_answer_func])
 )
 
-# 4. Generate training data
-prompts, completions, rewards = env.generate(
+# Evaluate the environment
+results = vf_env.evaluate(
+    client=openai_client,
     model="gpt-4",
-    n_samples=100
+    num_examples=10
 )
 ```
 
-## Key Concepts
+## Core Concepts
 
-### 1. **Environments** orchestrate the evaluation process
-- Handle dataset management and prompt formatting
-- Execute model interactions (rollouts)
-- Integrate parsers and rubrics for complete evaluation
+Verifiers is built around three fundamental primitives:
 
-### 2. **Parsers** extract structured information
-- XMLParser (recommended) for reliable field extraction
-- Built-in format validation and rewards
-- Support for alternative field names
+### 1. Environments
+Manage the complete interaction flow between models, datasets, and evaluation.
 
-### 3. **Rubrics** define evaluation criteria
-- Combine multiple reward functions with weights
-- Support task-specific and general evaluations
-- Enable sophisticated multi-aspect scoring
+- **SingleTurnEnv**: One-shot Q&A tasks (most common entry point)
+- **MultiTurnEnv**: Interactive conversations and multi-step reasoning
+- **ToolEnv**: Tasks requiring external tools
+- **Custom Environments**: Write your own by extending base classes
 
-### 4. **Tools** extend model capabilities
-- Simple Python functions with clear signatures
-- Automatic discovery and schema generation
-- Safe execution with error handling
+### 2. Parsers
+Extract structured information from model outputs.
 
-## Why Verifiers?
+- **XMLParser**: Convenience parser for XML-tagged fields
+- **ThinkParser**: Convenience parser for step-by-step reasoning
+- **Custom Parsers**: Write your own for specific output formats
 
-- **Modular Design**: Mix and match components for your use case
-- **Production Ready**: Used for training state-of-the-art models
-- **Efficient**: Async operations and batch processing built-in
-- **Flexible**: Support for any OpenAI-compatible API
-- **Extensible**: Easy to add custom environments, parsers, and rubrics
+### 3. Rubrics
+Combine multiple reward functions to evaluate model outputs.
 
-## Learn More
+- **Base Rubric**: Combine multiple reward functions with weights
+- **RubricGroup**: Aggregate multiple rubrics
+- **Custom Rubrics**: Write your own for task-specific evaluation
 
-- Start with the [Overview](overview.md) for core concepts
-- Walk through [Examples](examples.md) to see real implementations
-- Deep dive into [Environments](environments.md), [Parsers](parsers.md), and [Rubrics](rubrics.md)
-- Learn about [Training](training.md) models with GRPO
-- Explore [Advanced](advanced.md) patterns for complex use cases
+## Documentation Sections
+
+### Getting Started
+- **[Overview](overview.md)**: Core concepts and architecture
+- **[Examples](examples.md)**: Practical examples from real usage
+- **[Environments](environments.md)**: Environment types and usage
+
+### Core Components
+- **[Parsers](parsers.md)**: Structured output extraction
+- **[Rubrics](rubrics.md)**: Multi-criteria evaluation
+- **[API Reference](api_reference.md)**: Complete API documentation
+
+### Advanced Topics
+- **[Tools](tools.md)**: Tool integration and usage
+- **[Testing](testing.md)**: Testing environments and components
+- **[Development](development.md)**: Contributing to the framework
+
+## Key Design Principles
+
+### 1. Start Simple
+Most environments provide sensible defaults:
+
+```python
+# Simple - environment chooses defaults
+vf_env = vf.SingleTurnEnv(dataset=dataset)
+
+# Custom - specify your own components
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
+    parser=vf.ThinkParser(),
+    rubric=custom_rubric
+)
+```
+
+### 2. Multi-Criteria Evaluation
+Real-world tasks have multiple success criteria:
+
+```python
+rubric = vf.Rubric(funcs=[
+    correct_answer_func,      # Is it right?
+    reasoning_clarity_func,   # Is it well-explained?
+    format_compliance_func    # Does it follow instructions?
+], weights=[0.7, 0.2, 0.1])
+```
+
+### 3. Incremental Complexity
+Start with basic environments and add complexity as needed:
+
+1. Begin with `SingleTurnEnv` for Q&A tasks
+2. Use `MultiTurnEnv` for interactive tasks
+3. Write custom parsers for specific output formats
+4. Write custom rubrics for task-specific evaluation
+
+## Environment Types
+
+Different environment types are designed for different tasks:
+
+| Environment | Use Case | Examples |
+|-------------|----------|----------|
+| **SingleTurnEnv** | One-shot Q&A | Math problems, classification |
+| **MultiTurnEnv** | Interactive conversations | Multi-step reasoning, dialogue |
+| **ToolEnv** | Need external tools | Code execution, calculations |
+| **TextArenaEnv** | Games/simulations | Wordle, strategy games |
+| **Custom** | Specific requirements | Write your own |
+
+## Training and Evaluation
+
+Environments are not just for training - they're also powerful evaluation tools:
+
+```python
+# Evaluate a model
+results = vf_env.evaluate(
+    client=openai_client,
+    model="gpt-4",
+    num_examples=100
+)
+
+# Generate training data
+results = vf_env.generate(
+    client=openai_client,
+    model="gpt-4",
+    n_samples=1000
+)
+```
+
+The framework supports various training approaches:
+- **GRPO Trainer**: Reinforcement learning with the environment
+- **Verifiers**: Async FSDP environment training
+- **Custom Training**: Use environments as reward functions in your own training loops
+
+## Examples
+
+See the [Examples](examples.md) section for complete working examples:
+
+- **GSM8K Math**: Simple Q&A with step-by-step reasoning
+- **Tool-Augmented Math**: Complex math with Python execution
+- **Interactive Wordle**: Game-based training
+- **Multi-Turn Wiki Search**: Interactive search with tools
+- **Custom Parsers**: Writing parsers for specific formats
+- **Custom Rubrics**: Writing rubrics for specific evaluation
+
+## Best Practices
+
+1. **Start Simple**: Begin with `SingleTurnEnv` and basic parsers
+2. **Add Complexity**: Gradually add custom parsers and rubrics
+3. **Include Format Rewards**: Always include `parser.get_format_reward_func()` in rubrics
+4. **Test Thoroughly**: Test environments before large-scale training
+5. **Document Format**: Clearly specify expected output format in system prompts
+6. **Handle Errors**: Ensure parsers and rubrics handle malformed input gracefully
+
+## Getting Help
+
+- **Examples**: Check the [Examples](examples.md) section for working code
+- **API Reference**: See [API Reference](api_reference.md) for complete documentation
+- **Issues**: Report bugs and request features on GitHub
+- **Discussions**: Ask questions and share ideas on GitHub Discussions
+
+## Contributing
+
+We welcome contributions! See the [Development](development.md) guide for:
+- Setting up the development environment
+- Running tests
+- Contributing code
+- Code style guidelines

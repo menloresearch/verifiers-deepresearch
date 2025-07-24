@@ -1,15 +1,63 @@
-# Training
+# Training and Evaluation
 
-The verifiers framework integrates with state-of-the-art training methods, particularly Group Relative Policy Optimization (GRPO), to train language models using the reward signals from your environments.
+The verifiers framework supports both evaluation and training workflows. Environments are powerful evaluation tools that can also be used for training models using reinforcement learning.
 
-## Training Overview
+## Environment Evaluation
 
-The training pipeline consists of:
+Environments are not just for training - they're excellent evaluation tools:
 
-1. **Data Generation**: Use environments to create rollouts
-2. **Reward Calculation**: Score rollouts with rubrics
-3. **Policy Optimization**: Train models using GRPO
-4. **Evaluation**: Validate improvements using same environments
+```python
+import verifiers as vf
+
+# Create environment
+dataset = vf.load_example_dataset("gsm8k", split="train")
+vf_env = vf.SingleTurnEnv(dataset=dataset)
+
+# Evaluate model performance
+results = vf_env.evaluate(
+    client=openai_client,
+    model="gpt-4",
+    num_examples=100,
+    rollouts_per_example=3
+)
+
+print(f"Average reward: {sum(results['rewards']) / len(results['rewards'])}")
+print(f"Correct answers: {sum(1 for r in results['rewards'] if r > 0.8)}")
+
+# Generate training data
+results = vf_env.generate(
+    client=openai_client,
+    model="gpt-4",
+    n_samples=1000
+)
+```
+
+## Training with GRPO
+
+For users who want to train models, the framework integrates with Group Relative Policy Optimization (GRPO). Here's the basic pattern:
+
+```python
+import verifiers as vf
+
+# 1. Create environment
+dataset = vf.load_example_dataset("gsm8k", split="train")
+vf_env = vf.SingleTurnEnv(dataset=dataset)
+
+# 2. Load model
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-1.5B-Instruct")
+
+# 3. Configure training  
+args = vf.grpo_defaults(run_name="my-experiment")
+
+# 4. Train
+trainer = vf.GRPOTrainer(
+    model=model,
+    processing_class=tokenizer,
+    env=vf_env,
+    args=args,
+)
+trainer.train()
+```
 
 ## GRPO: Group Relative Policy Optimization
 
@@ -19,550 +67,286 @@ GRPO is a reinforcement learning algorithm designed specifically for LLMs that:
 - Provides stable training dynamics
 - Works with any differentiable model
 
-### Basic Training Setup
+## Training Configuration
+
+### Using Defaults
+
+All examples start with `vf.grpo_defaults()`:
 
 ```python
-from verifiers.trainers import GRPOTrainer, GRPOConfig
-from verifiers.envs import SingleTurnEnv
-from transformers import AutoModelForCausalLM, AutoTokenizer
+args = vf.grpo_defaults(run_name="descriptive-name")
 
-# Load model and tokenizer
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+# Common overrides
+args.per_device_train_batch_size = 8
+args.num_generations = 16
+args.gradient_accumulation_steps = 4
+args.max_steps = 500
+args.max_prompt_length = 1024
+args.max_completion_length = 2048
+```
 
-# Create environment
-env = SingleTurnEnv(
-    dataset=dataset,
-    parser=XMLParser(["reasoning", "answer"]),
-    rubric=custom_rubric
-)
+### Key Parameters
 
-# Configure training
-config = GRPOConfig(
-    learning_rate=1e-5,
-    batch_size=32,
-    group_size=4,  # Compare 4 samples per prompt
-    num_epochs=3,
-    gradient_accumulation_steps=4,
-    temperature=0.7,
-    kl_coef=0.1,  # KL penalty coefficient
-)
+```python
+# Batch configuration
+args.per_device_train_batch_size = 8    # Samples per GPU
+args.num_generations = 16               # Completions per prompt
+args.gradient_accumulation_steps = 4    # Steps before update
 
-# Create trainer
-trainer = GRPOTrainer(
+# Length limits
+args.max_prompt_length = 1024           # Truncate long prompts
+args.max_completion_length = 2048       # Truncate long responses
+
+# Training schedule
+args.max_steps = 500                    # Total training steps
+args.num_iterations = 1                 # Updates per batch
+args.learning_rate = 1e-6               # Learning rate
+
+# Generation settings
+args.temperature = 1.0                  # Sampling temperature
+args.top_p = 1.0                        # Nucleus sampling
+```
+
+## Model Loading
+
+Use the standard pattern from examples:
+
+```python
+# Basic loading
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-1.5B-Instruct")
+
+# With specific models from examples
+model_name = "willcb/Qwen2.5-7B-Math-Python-SFT"  # Pre-trained on math
+model, tokenizer = vf.get_model_and_tokenizer(model_name)
+
+# Different sizes
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-7B-Instruct")
+model, tokenizer = vf.get_model_and_tokenizer("willcb/Qwen3-14B-Arc-1D-SFT")
+```
+
+## Parameter-Efficient Training
+
+Use LoRA for large models:
+
+```python
+trainer = vf.GRPOTrainer(
     model=model,
-    tokenizer=tokenizer,
-    env=env,
-    config=config
+    processing_class=tokenizer,
+    env=vf_env,
+    args=args,
+    peft_config=vf.lora_defaults()  # Add LoRA
 )
+```
 
-# Train
+## Infrastructure Setup
+
+### Single GPU Training
+
+```python
+# Simple single GPU training
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-1.5B-Instruct")
+args = vf.grpo_defaults(run_name="single-gpu-experiment")
+trainer = vf.GRPOTrainer(model=model, processing_class=tokenizer, env=vf_env, args=args)
 trainer.train()
 ```
 
-## Data Generation Pipeline
+### Multi-GPU Training
 
-### Online Generation
+The examples use this infrastructure pattern:
 
-Generate training data on-the-fly during training:
+```bash
+# Start vLLM inference server (4 GPUs for generation)
+CUDA_VISIBLE_DEVICES=0,1,2,3 vf-vllm --model 'Qwen/Qwen2.5-7B-Instruct' \
+    --tensor-parallel-size 4 --max-model-len 8192 --dtype bfloat16 \
+    --gpu-memory-utilization 0.9 --enable-prefix-caching \
+    --host 0.0.0.0 --port 8000
 
-```python
-class OnlineGRPOTrainer(GRPOTrainer):
-    def get_batch(self):
-        """Generate fresh batch of data."""
-        # Sample prompts from dataset
-        prompts = self.env.sample_prompts(self.config.batch_size)
-        
-        # Generate multiple completions per prompt
-        all_completions = []
-        all_rewards = []
-        
-        for prompt in prompts:
-            # Generate group_size completions
-            completions = []
-            for _ in range(self.config.group_size):
-                completion, _ = self.env.rollout(
-                    client=self.client,
-                    model=self.model,
-                    prompt=prompt["prompt"],
-                    answer=prompt["answer"],
-                    temperature=self.config.temperature
-                )
-                completions.append(completion)
-            
-            # Score completions
-            rewards = []
-            for completion in completions:
-                score = self.env.rubric.score_rollout_sync(
-                    prompt=prompt["prompt"],
-                    completion=completion,
-                    answer=prompt["answer"],
-                    state={}
-                )
-                rewards.append(score["reward"])
-            
-            all_completions.extend(completions)
-            all_rewards.extend(rewards)
-        
-        return prompts, all_completions, all_rewards
+# Run training on separate GPUs (4 GPUs for training)
+CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml \
+    --num-processes 4 your_training_script.py
 ```
 
-### Offline Generation
+### ZeRO Configuration
 
-Pre-generate large datasets for faster training:
+The examples use DeepSpeed ZeRO-3. Create `configs/zero3.yaml`:
 
-```python
-# Generate dataset
-print("Generating training data...")
-prompts, completions, rewards = env.generate(
-    model="gpt-3.5-turbo",
-    n_samples=10000,
-    temperature=0.8,
-    batch_size=100,
-    max_concurrent=10
-)
-
-# Save for training
-dataset = {
-    "prompts": prompts,
-    "completions": completions,
-    "rewards": rewards
-}
-torch.save(dataset, "training_data.pt")
-
-# Load in trainer
-trainer = GRPOTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    dataset=dataset,  # Pre-generated data
-    config=config
-)
+```yaml
+compute_environment: LOCAL_MACHINE
+distributed_type: MULTI_GPU
+downcast_bf16: 'no'
+gpu_ids: all
+machine_rank: 0
+main_training_function: main
+mixed_precision: bf16
+num_machines: 1
+num_processes: 4
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+deepspeed_config:
+  gradient_accumulation_steps: 1
+  gradient_clipping: 1.0
+  offload_optimizer_device: cpu
+  offload_param_device: cpu
+  zero3_init_flag: true
+  zero3_save_16bit_model: true
+  zero_stage: 3
 ```
 
-## Advanced Training Patterns
+## Environment-Specific Examples
 
-### Curriculum Learning
-
-Gradually increase task difficulty:
+### Math Training
 
 ```python
-class CurriculumGRPOTrainer(GRPOTrainer):
-    def __init__(self, *args, difficulty_schedule, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.difficulty_schedule = difficulty_schedule
-    
-    def get_current_difficulty(self, epoch, step):
-        """Determine current difficulty level."""
-        progress = epoch + step / self.num_steps_per_epoch
-        
-        for threshold, difficulty in self.difficulty_schedule:
-            if progress < threshold:
-                return difficulty
-        
-        return self.difficulty_schedule[-1][1]
-    
-    def get_batch(self, epoch, step):
-        """Sample batch based on current difficulty."""
-        difficulty = self.get_current_difficulty(epoch, step)
-        
-        # Filter dataset by difficulty
-        filtered_data = [
-            d for d in self.env.dataset 
-            if d.get("difficulty", "easy") == difficulty
-        ]
-        
-        # Sample from filtered data
-        return self.sample_batch(filtered_data)
+import verifiers as vf
 
-# Usage
-trainer = CurriculumGRPOTrainer(
-    model=model,
-    env=env,
-    difficulty_schedule=[
-        (1.0, "easy"),    # First epoch: easy
-        (2.0, "medium"),  # Second epoch: medium
-        (3.0, "hard"),    # Third epoch: hard
-    ],
-    config=config
-)
-```
+dataset = vf.load_example_dataset("gsm8k", split="train")
+eval_dataset = vf.load_example_dataset("gsm8k", split="test")
 
-### Multi-Reward Training
+system_prompt = """
+Think step-by-step inside <think>...</think> tags.
+Then, give your final numerical answer inside \\boxed{{...}}.
+"""
 
-Train with multiple objectives:
+parser = vf.ThinkParser(extract_fn=vf.extract_boxed_answer)
 
-```python
-from verifiers.rubrics import RubricGroup
+def correct_answer_reward_func(completion, answer, **kwargs):
+    response = parser.parse_answer(completion) or ''
+    return 1.0 if response == answer else 0.0
 
-# Create multiple rubrics for different objectives
-correctness_rubric = Rubric(
-    funcs=[exact_match_reward],
-    weights=[1.0]
-)
+rubric = vf.Rubric(funcs=[
+    correct_answer_reward_func,
+    parser.get_format_reward_func()
+], weights=[1.0, 0.2])
 
-efficiency_rubric = Rubric(
-    funcs=[length_penalty, time_penalty],
-    weights=[0.5, 0.5]
-)
-
-style_rubric = Rubric(
-    funcs=[clarity_reward, formality_reward],
-    weights=[0.7, 0.3]
-)
-
-# Combine with weights
-combined_rubric = RubricGroup([
-    correctness_rubric,  # Most important
-    efficiency_rubric,   # Secondary
-    style_rubric        # Least important
-])
-
-# Set different weights for training phases
-class AdaptiveGRPOTrainer(GRPOTrainer):
-    def __init__(self, *args, rubric_weights_schedule, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.rubric_weights_schedule = rubric_weights_schedule
-    
-    def compute_rewards(self, completions, prompts, epoch):
-        """Compute rewards with adaptive weights."""
-        # Get current weights
-        weights = self.rubric_weights_schedule.get(
-            epoch, 
-            self.rubric_weights_schedule['default']
-        )
-        
-        # Temporarily update rubric weights
-        original_weights = self.env.rubric.get_group_weights()
-        self.env.rubric.set_group_weights(weights)
-        
-        # Compute rewards
-        rewards = super().compute_rewards(completions, prompts)
-        
-        # Restore weights
-        self.env.rubric.set_group_weights(original_weights)
-        
-        return rewards
-```
-
-### Reinforcement Learning from AI Feedback (RLAIF)
-
-Use AI models for evaluation:
-
-```python
-from verifiers.rubrics import JudgeRubric
-
-# Create judge-based environment
-judge_rubric = JudgeRubric(
-    judge_models=["gpt-4", "claude-2"],  # Multiple judges
-    aggregation="mean",  # Average scores
-    client=openai_client,
-    template="""Evaluate this response for helpfulness and accuracy.
-
-Question: {prompt}
-Response: {completion}
-
-Score from 0-10 and explain your reasoning.
-
-<reasoning>
-[Your evaluation here]
-</reasoning>
-<score>
-[0-10]
-</score>"""
-)
-
-env = SingleTurnEnv(
+vf_env = vf.SingleTurnEnv(
     dataset=dataset,
-    rubric=judge_rubric
+    eval_dataset=eval_dataset,
+    system_prompt=system_prompt,
+    parser=parser,
+    rubric=rubric,
 )
 
-# Train with AI feedback
-trainer = GRPOTrainer(
-    model=model,
-    env=env,
-    config=config
-)
+# Train
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-1.5B-Instruct")
+args = vf.grpo_defaults(run_name="gsm8k-training")
+trainer = vf.GRPOTrainer(model=model, processing_class=tokenizer, env=vf_env, args=args)
+trainer.train()
 ```
 
-## Training Configuration
-
-### Key Hyperparameters
+### Tool-Augmented Training
 
 ```python
-config = GRPOConfig(
-    # Learning
-    learning_rate=1e-5,          # Model learning rate
-    batch_size=32,               # Total batch size
-    group_size=4,                # Samples per prompt for comparison
-    gradient_accumulation_steps=4, # Effective batch = 32 * 4 = 128
-    
-    # Generation
-    temperature=0.7,             # Sampling temperature
-    max_new_tokens=512,          # Maximum generation length
-    top_p=0.9,                   # Nucleus sampling
-    
-    # GRPO specific
-    kl_coef=0.1,                # KL divergence penalty
-    gamma=1.0,                  # Discount factor
-    gae_lambda=0.95,            # GAE parameter
-    
-    # Optimization
-    num_epochs=3,               # Training epochs
-    warmup_ratio=0.1,           # LR warmup
-    weight_decay=0.01,          # L2 regularization
-    
-    # Efficiency
-    fp16=True,                  # Mixed precision training
-    gradient_checkpointing=True, # Memory optimization
-    
-    # Logging
-    logging_steps=10,           # Log frequency
-    eval_steps=100,             # Evaluation frequency
-    save_steps=500,             # Checkpoint frequency
-)
-```
+import verifiers as vf
+from verifiers.tools import python
 
-### Memory Optimization
-
-For large models:
-
-```python
-from accelerate import Accelerator
-from peft import LoraConfig, get_peft_model
-
-# Use LoRA for parameter-efficient training
-lora_config = LoraConfig(
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["q_proj", "v_proj"],
+# Create tool environment
+vf_env = vf.ToolEnv(
+    dataset=dataset,
+    tools=[python],
+    max_steps=3
 )
 
-model = get_peft_model(model, lora_config)
+# Train with tools
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-7B-Instruct")
+args = vf.grpo_defaults(run_name="tool-training")
+trainer = vf.GRPOTrainer(model=model, processing_class=tokenizer, env=vf_env, args=args)
+trainer.train()
+```
 
-# Use gradient checkpointing
-model.gradient_checkpointing_enable()
+## Alternative Training Approaches
 
-# Initialize accelerator for distributed training
-accelerator = Accelerator(
-    mixed_precision="fp16",
-    gradient_accumulation_steps=config.gradient_accumulation_steps,
+### Using Environments as Reward Functions
+
+You can use environments as reward functions in your own training loops:
+
+```python
+# Generate training data with rewards
+results = vf_env.generate(
+    client=openai_client,
+    model="gpt-4",
+    n_samples=1000
 )
 
-# Prepare for training
-model, optimizer, dataloader = accelerator.prepare(
-    model, optimizer, dataloader
+# Process for training
+processed = vf_env.process_env_results(
+    prompts=results['prompts'],
+    completions=results['completions'],
+    states=results['states'],
+    rewards=results['rewards'],
+    processing_class=tokenizer
 )
+
+# Use in your own training loop
+for batch in processed:
+    # Your custom training logic here
+    pass
 ```
 
-## Evaluation During Training
+### Verifiers for Async FSDP Training
 
-### Periodic Evaluation
-
-```python
-class EvaluatingGRPOTrainer(GRPOTrainer):
-    def evaluate(self):
-        """Run evaluation on validation set."""
-        self.model.eval()
-        total_reward = 0
-        num_samples = 0
-        
-        with torch.no_grad():
-            for batch in self.eval_dataloader:
-                prompts = batch["prompts"]
-                answers = batch["answers"]
-                
-                # Generate completions
-                completions = self.generate(prompts)
-                
-                # Score with rubric
-                rewards = self.env.rubric.score_rollouts(
-                    prompts=prompts,
-                    completions=completions,
-                    answers=answers,
-                    states=[{} for _ in prompts]
-                )
-                
-                total_reward += sum(rewards["reward"])
-                num_samples += len(prompts)
-        
-        avg_reward = total_reward / num_samples
-        print(f"Validation reward: {avg_reward:.4f}")
-        
-        self.model.train()
-        return avg_reward
-```
-
-### Multi-Metric Tracking
+The framework also supports async FSDP environment training through the verifiers package:
 
 ```python
-def comprehensive_evaluation(model, env, eval_dataset):
-    """Evaluate model on multiple metrics."""
-    metrics = {
-        "reward": [],
-        "format_compliance": [],
-        "answer_accuracy": [],
-        "response_length": [],
-        "inference_time": []
-    }
-    
-    for sample in eval_dataset:
-        start_time = time.time()
-        
-        # Generate response
-        completion, _ = env.rollout(
-            model=model,
-            prompt=sample["prompt"],
-            answer=sample["answer"]
-        )
-        
-        # Compute metrics
-        scores = env.rubric.score_rollout_sync(
-            prompt=sample["prompt"],
-            completion=completion,
-            answer=sample["answer"],
-            state={}
-        )
-        
-        metrics["reward"].append(scores["reward"])
-        metrics["format_compliance"].append(scores.get("format", 0))
-        metrics["answer_accuracy"].append(scores.get("correct_answer", 0))
-        metrics["response_length"].append(len(completion))
-        metrics["inference_time"].append(time.time() - start_time)
-    
-    # Aggregate metrics
-    return {
-        metric: np.mean(values) 
-        for metric, values in metrics.items()
-    }
-```
-
-## Production Training Pipeline
-
-### Complete Training Script
-
-```python
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from verifiers.envs import SingleTurnEnv
-from verifiers.trainers import GRPOTrainer, GRPOConfig
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
-import wandb
-
-def main():
-    # Initialize wandb
-    wandb.init(project="verifiers-training")
-    
-    # Load model and tokenizer
-    model_name = "meta-llama/Llama-2-7b-hf"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,
-        device_map="auto"
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-    
-    # Create environment
-    parser = XMLParser(["reasoning", "answer"])
-    rubric = create_task_rubric(parser)  # Your custom rubric
-    
-    env = SingleTurnEnv(
-        dataset=load_dataset("your_dataset"),
-        parser=parser,
-        rubric=rubric,
-        system_prompt=SYSTEM_PROMPT
-    )
-    
-    # Training configuration
-    config = GRPOConfig(
-        output_dir="./checkpoints",
-        learning_rate=1e-5,
-        batch_size=32,
-        group_size=4,
-        num_epochs=3,
-        eval_steps=100,
-        save_steps=500,
-        logging_steps=10,
-        warmup_ratio=0.1,
-        fp16=True,
-        gradient_checkpointing=True,
-        report_to="wandb"
-    )
-    
-    # Create trainer
-    trainer = GRPOTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        env=env,
-        config=config,
-        eval_dataset=load_eval_dataset()
-    )
-    
-    # Train
-    trainer.train()
-    
-    # Save final model
-    trainer.save_model("./final_model")
-    
-    # Run final evaluation
-    eval_results = trainer.evaluate()
-    print(f"Final evaluation results: {eval_results}")
-
-if __name__ == "__main__":
-    main()
-```
-
-### Distributed Training
-
-For multi-GPU training:
-
-```python
-# Launch with accelerate
-# accelerate launch --multi_gpu --num_processes 4 train.py
-
-from accelerate import Accelerator
-
-accelerator = Accelerator()
-
-# Modify trainer to use accelerator
-class DistributedGRPOTrainer(GRPOTrainer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.accelerator = accelerator
-        
-        # Prepare model and optimizer
-        self.model, self.optimizer = self.accelerator.prepare(
-            self.model, self.optimizer
-        )
+# This is supported by prime-rl for async FSDP environment training
+# See the verifiers package for more details
 ```
 
 ## Best Practices
 
-### 1. Start Simple
-- Begin with a simple rubric focusing on correctness
-- Add complexity gradually as model improves
-- Monitor for reward hacking
+### 1. Start with Evaluation
+Before training, thoroughly evaluate your environment:
 
-### 2. Validation Strategy
-- Hold out test data with same distribution
-- Use same environment for evaluation
-- Track multiple metrics, not just reward
+```python
+# Test environment with a few examples
+results = vf_env.evaluate(
+    client=openai_client,
+    model="gpt-4",
+    num_examples=10
+)
+print(f"Average reward: {sum(results['rewards']) / len(results['rewards'])}")
+```
 
-### 3. Hyperparameter Tuning
-- Start with small group_size (2-4)
-- Use lower learning rates than supervised fine-tuning
-- Adjust KL coefficient based on divergence
+### 2. Use Appropriate Model Sizes
+Start with smaller models for experimentation:
 
-### 4. Data Quality
-- Ensure diverse prompts in dataset
-- Balance difficulty levels
-- Include edge cases and failure modes
+```python
+# Start small
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-1.5B-Instruct")
 
-### 5. Monitoring
-- Track reward distribution, not just mean
-- Monitor format compliance separately
-- Watch for mode collapse
+# Scale up when ready
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-7B-Instruct")
+```
 
-The verifiers framework makes it easy to go from environment design to trained models, providing a complete pipeline for reinforcement learning with human or AI feedback.
+### 3. Monitor Training
+Use evaluation datasets and logging:
+
+```python
+args = vf.grpo_defaults(run_name="my-experiment")
+args.eval_strategy = "steps"
+args.eval_steps = 100
+args.save_strategy = "steps"
+args.save_steps = 500
+```
+
+### 4. Handle Infrastructure
+For large-scale training, use proper infrastructure:
+
+```bash
+# Use vLLM for efficient generation
+vf-vllm --model 'Qwen/Qwen2.5-7B-Instruct' --tensor-parallel-size 4
+
+# Use DeepSpeed for efficient training
+accelerate launch --config-file configs/zero3.yaml training_script.py
+```
+
+## Key Gotchas
+
+1. **Environment Testing**: Always test your environment before training
+2. **Reward Scaling**: Ensure rewards are in reasonable ranges (typically 0-1)
+3. **Format Rewards**: Always include format compliance in your rubric
+4. **Infrastructure**: Use appropriate infrastructure for your model size
+5. **Evaluation**: Regular evaluation helps catch training issues early
