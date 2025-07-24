@@ -98,7 +98,26 @@ class Environment(ABC):
 
         if self.dataset is None and self.eval_dataset is None:
             raise ValueError("Either dataset or eval_dataset must be provided")
+    def _find_prefix_subsequence(self, a: str, b: str) -> str:
+        """
+        Removes the minimum number of characters from string 'a' so that
+        it becomes a prefix of string 'b'.
+        """
+        i = 0  # Pointer for string a
+        j = 0  # Pointer for string b
+        result = []
 
+        # Loop while we have characters left in both strings
+        while i < len(a) and j < len(b):
+            # If characters match, keep it and advance both pointers
+            if a[i] == b[j]:
+                result.append(a[i])
+                j += 1
+            
+            # Always advance the pointer for 'a'
+            i += 1
+                
+        return "".join(result)
     def format_prompt(
         self,
         prompt_str: str,
@@ -711,14 +730,18 @@ Model copies with swapped templates are available here: https://huggingface.co/c
             # user case -- use message
             else:
                 assert message["role"] == "user" or message["role"] == "tool"
-                token_prefix: list[int] = processing_class.apply_chat_template(
-                    conversation=messages_consumed  # type: ignore
+                token_prefix_str: str = processing_class.apply_chat_template(
+                    conversation=messages_consumed, tokenize=False  # type: ignore
                 )
-                token_prefix_with_turn: list[int] = (
+                token_prefix_with_turn_str: str = (
                     processing_class.apply_chat_template(
-                        conversation=messages_consumed + [message],  # type: ignore
+                        conversation=messages_consumed + [message], tokenize=False  # type: ignore
                     )
                 )
+                token_prefix_str = self._find_prefix_subsequence(token_prefix_str, token_prefix_with_turn_str)
+                token_prefix = processing_class.encode(token_prefix_str)
+                token_prefix_with_turn = processing_class.encode(token_prefix_with_turn_str)
+                
                 assert token_prefix_with_turn[: len(token_prefix)] == token_prefix, (
                     f"Token prefix mismatch. Token prefix: {token_prefix}, token prefix with turn: {token_prefix_with_turn}"
                 )
