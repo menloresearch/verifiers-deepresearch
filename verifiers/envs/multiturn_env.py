@@ -105,6 +105,9 @@ class MultiTurnEnv(Environment):
                 rollout += response_text
                 completion += response_text
             state["turn"] += 1
+            if response.usage.completion_tokens > 4000:
+                is_completed = True
+                break
             if (
                 self.is_completed(rollout, state, **kwargs)
                 or state["turn"] >= self.max_turns

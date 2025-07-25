@@ -151,19 +151,27 @@ class Rubric:
             func.__name__: reward
             for func, reward in zip(self.get_reward_funcs(), reward_scores)
         }
-        print(self.get_reward_weights(), reward_scores, self.get_reward_funcs())
         correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = [reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())]
         
         if num_xml_reward == 0.:
             b = -0.5
             # format_efficiency_reward = -0.5
         else:
-            b = tool_execution_reward + format_func + efficient_thinking_reward + num_xml_reward
+            b = tool_execution_reward + format_func + efficient_thinking_reward + num_xml_reward + visit_tool_reward*5
         
-        format_efficiency_reward = (correct_answer_reward)*math.log(1.001 + correct_answer_reward*b ) # sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
+        format_efficiency_reward = (correct_answer_reward)*math.log(1.001 + correct_answer_reward*b ) #+  0.5*(num_xml_reward + visit_tool_reward) # sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
         rewards["format_and_efficient_reward"] = format_efficiency_reward
         # correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = reward_scores
-        rewards['reward'] = format_efficiency_reward  # 0.3 * correct_answer_reward + 0.1*format_efficiency_reward + 0.6*visit_tool_reward
+        if abs(format_func - 0.12) < 1e-6:
+            format_func = 1
+        else:
+            format_func = 0.
+        if num_xml_reward > 0: num_xml_reward = 1.
+        if visit_tool_reward*5 < 0.5:
+            visit_tool_reward = 0.
+        elif visit_tool_reward*5 >0.8:
+            visit_tool_reward = 1.
+        rewards['reward'] = correct_answer_reward *num_xml_reward*format_func #* visit_tool_reward*5
         return rewards
 
     async def score_rollouts(
