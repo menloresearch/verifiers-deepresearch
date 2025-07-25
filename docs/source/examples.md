@@ -1,531 +1,555 @@
 # Examples
 
-This guide walks through real-world examples from the verifiers codebase, explaining implementation patterns and design decisions.
+The examples folder contains working implementations that demonstrate how to use the verifiers framework. These examples serve as the **ground truth for usage patterns** and show both evaluation and training workflows.
 
-## Math Problem Solving
+## Quick Start: Basic Evaluation
 
-The math example demonstrates core patterns for educational tasks.
-
-### Implementation Overview
+**Most users should start here** - a simple evaluation of a model on a math reasoning task:
 
 ```python
-# From examples/math_python.py
-from verifiers.envs import SingleTurnEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
+import verifiers as vf
+from typing import Dict, Any, Union, List
+from datasets import Dataset
+from openai import OpenAI
 
-class MathEnv(SingleTurnEnv):
-    def __init__(self, dataset, **kwargs):
-        # XMLParser for structured output
-        parser = XMLParser(fields=["reasoning", "answer"])
-        
-        # Custom evaluation for mathematical equivalence
-        def correct_answer_reward_func(completion, answer, **kwargs):
-            parsed_completion = parser.parse(completion)
-            return float(check_math_equivalence(
-                parsed_completion.answer, 
-                answer
-            ))
-        
-        rubric = Rubric(
-            funcs=[correct_answer_reward_func],
-            weights=[1.0],
-            parser=parser
-        )
-        
-        super().__init__(
-            dataset=dataset,
-            system_prompt=MATH_SYSTEM_PROMPT,
-            parser=parser,
-            rubric=rubric,
-            **kwargs
-        )
-```
+# 1. Load dataset
+dataset: Dataset = vf.load_example_dataset("gsm8k", split="train")
 
-### Key Design Decisions
+# 2. Setup parser and rubric
+parser = vf.ThinkParser()
 
-1. **XMLParser for Clear Structure**: Math solutions benefit from separated reasoning and final answer.
+def correct_answer(completion: Union[str, List[Dict[str, str]]], answer: str, **kwargs) -> float:
+    response = parser.parse_answer(completion) or ''
+    return 1.0 if response.strip() == answer.strip() else 0.0
 
-2. **Mathematical Equivalence**: The reward function handles equivalent representations:
-   ```python
-   def check_math_equivalence(answer1, answer2):
-       # "1/2" == "0.5" == "½"
-       try:
-           val1 = parse_math_answer(answer1)
-           val2 = parse_math_answer(answer2)
-           return abs(val1 - val2) < 1e-9
-       except:
-           return answer1.strip() == answer2.strip()
-   ```
-
-3. **System Prompt Engineering**:
-   ```python
-   MATH_SYSTEM_PROMPT = """Solve the given math problem step by step.
-   
-   Format your response as:
-   <reasoning>
-   Show your work here. Explain each step clearly.
-   </reasoning>
-   <answer>
-   Your final numerical answer
-   </answer>"""
-   ```
-
-### Usage Example
-
-```python
-# Load dataset
-dataset = load_dataset("gsm8k", split="train")
-
-# Create environment
-env = MathEnv(dataset)
-
-# Generate training data
-prompts, completions, rewards = env.generate(
-    model="gpt-4",
-    n_samples=1000,
-    temperature=0.7
+rubric = vf.Rubric(
+    funcs=[correct_answer, parser.get_format_reward_func()],
+    weights=[0.8, 0.2]
 )
 
-# Example output
-print(completions[0])
-# <reasoning>
-# Let me solve this step by step.
-# First, I need to find the total number of apples...
-# 5 baskets × 20 apples per basket = 100 apples
-# </reasoning>
-# <answer>100</answer>
+# 3. Create environment
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
+    system_prompt="Think step-by-step inside <think>...</think> tags, then give your answer.",
+    parser=parser,
+    rubric=rubric,
+    message_type="chat"  # Recommended: use "chat" for most cases
+)
+
+# 4. Evaluate the environment
+client = OpenAI()
+results: Dict[str, Any] = vf_env.evaluate(
+    client=client,
+    model="gpt-4",
+    num_examples=10
+)
+
+print(f"Results: {results}")
 ```
 
-## Tool-Augmented Math
+## Dataset Format Examples
 
-The Smola math tools example shows advanced tool integration.
+The framework supports two dataset formats:
 
-### Complex Tool Environment
+### Simple Format (answer column)
 
 ```python
-# From examples/smola_math_tools.py
-from verifiers.envs import SmolToolEnv
-from verifiers.tools import calculator, python
+from datasets import Dataset
+from typing import List, Dict
 
-class ToolMathEnv(SmolToolEnv):
-    def __init__(self, dataset, **kwargs):
-        # Multiple tools for different operations
-        tools = [
-            calculator,    # Basic arithmetic
-            python,       # Complex computation
-            plot_tool,    # Visualization
-            verify_tool   # Answer checking
+# Option 1: Simple format with answer column
+dataset: Dataset = Dataset.from_list([
+    {"question": "What is 2+2?", "answer": "4"},
+    {"question": "What is 3*5?", "answer": "15"},
+    {"question": "What is 10-7?", "answer": "3"},
+])
+```
+
+### Complex Format (info dict)
+
+```python
+from datasets import Dataset
+from typing import List, Dict, Any
+
+# Option 2: Complex format with info dict
+dataset: Dataset = Dataset.from_list([
+    {
+        "question": "Solve this math problem: 2+2", 
+        "info": {
+            "answer": "4",
+            "difficulty": "easy",
+            "category": "arithmetic",
+            "explanation": "Basic addition"
+        }
+    },
+    {
+        "question": "What is the capital of France?",
+        "info": {
+            "answer": "Paris",
+            "difficulty": "easy", 
+            "category": "geography",
+            "explanation": "Capital city of France"
+        }
+    }
+])
+```
+
+## Message Type Examples
+
+### Chat Format (Recommended)
+
+```python
+from typing import List, Dict
+
+# Chat format supports system prompts
+system_prompt: str = "You are a helpful math tutor. Think step-by-step."
+
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
+    system_prompt=system_prompt,
+    message_type="chat"  # Recommended format
+)
+```
+
+### Completion Format (Legacy)
+
+```python
+# Completion format is simpler but more limited
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
+    message_type="completion"  # Legacy format
+)
+```
+
+## Advanced Evaluation with Custom Components
+
+### Custom Parser
+
+```python
+from verifiers.parsers import Parser
+from typing import Any, Dict
+import re
+
+class MathParser(Parser):
+    """Custom parser for mathematical reasoning."""
+    
+    def parse(self, text: str) -> Dict[str, Any]:
+        """Extract reasoning and answer from math response."""
+        # Extract reasoning between <think> tags
+        reasoning_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL)
+        reasoning = reasoning_match.group(1).strip() if reasoning_match else ""
+        
+        # Extract final answer
+        answer_match = re.search(r'The answer is (\d+)', text)
+        answer = answer_match.group(1) if answer_match else ""
+        
+        return {
+            "reasoning": reasoning,
+            "answer": answer,
+            "has_reasoning": len(reasoning) > 0,
+            "has_answer": len(answer) > 0
+        }
+    
+    def get_format_reward_func(self):
+        """Reward function for proper formatting."""
+        def format_reward(completion: Union[str, List[Dict[str, str]]], **kwargs) -> float:
+            if isinstance(completion, str):
+                text = completion
+            else:
+                text = completion[-1]["content"]
+            
+            # Check for required elements
+            has_think = "<think>" in text and "</think>" in text
+            has_answer = "The answer is" in text
+            
+            return 1.0 if (has_think and has_answer) else 0.0
+        
+        return format_reward
+
+# Use custom parser
+parser = MathParser()
+```
+
+### Custom Rubric
+
+```python
+from verifiers.rubrics import Rubric
+from typing import Union, List, Dict
+
+def correctness_reward(completion: Union[str, List[Dict[str, str]]], answer: str, **kwargs) -> float:
+    """Check if the answer is correct."""
+    parsed = parser.parse(completion)
+    return 1.0 if parsed["answer"] == answer else 0.0
+
+def reasoning_quality_reward(completion: Union[str, List[Dict[str, str]]], **kwargs) -> float:
+    """Evaluate reasoning quality."""
+    parsed = parser.parse(completion)
+    reasoning = parsed["reasoning"]
+    
+    # Reward for step-by-step reasoning
+    steps = reasoning.count('\n') + 1
+    return min(steps / 5.0, 1.0)  # Up to 5 steps = full score
+
+def mathematical_accuracy_reward(completion: Union[str, List[Dict[str, str]]], **kwargs) -> float:
+    """Check for mathematical errors in reasoning."""
+    parsed = parser.parse(completion)
+    reasoning = parsed["reasoning"].lower()
+    
+    # Check for common math errors
+    errors = 0
+    if '2+2=5' in reasoning:
+        errors += 1
+    if 'divide by zero' in reasoning:
+        errors += 1
+    
+    return max(0.0, 1.0 - errors * 0.5)  # -0.5 per error
+
+# Create comprehensive rubric
+rubric = Rubric(
+    funcs=[
+        correctness_reward,
+        reasoning_quality_reward,
+        mathematical_accuracy_reward,
+        parser.get_format_reward_func()
+    ],
+    weights=[0.5, 0.2, 0.2, 0.1]
+)
+```
+
+## Tool-Augmented Reasoning
+
+### Basic Tool Environment
+
+```python
+from verifiers.tools import calculator
+from typing import List, Callable
+
+# Create tool environment
+vf_env = vf.ToolEnv(
+    dataset=dataset,
+    system_prompt="""
+    Think step-by-step inside <think>...</think> tags.
+    If you need to calculate, use the calculator tool inside <tool>...</tool> tags.
+    Then give your final answer inside <answer>...</answer> tags.
+    """,
+    tools=[calculator],  # List[Callable]
+    max_steps=3,
+    message_type="chat"  # Recommended format
+)
+
+# Evaluate with tools
+results: Dict[str, Any] = vf_env.evaluate(
+    client=client,
+    model="gpt-4",
+    num_examples=10
+)
+```
+
+### Advanced Tool Environment with Smolagents
+
+```python
+from verifiers.envs.smola_tool_env import SmolaToolEnv
+from typing import List, Callable
+
+try:    
+    from smolagents.default_tools import PythonInterpreterTool
+    from verifiers.tools.smolagents import CalculatorTool
+except ImportError:
+    raise ImportError("Please install smolagents")
+
+# Setup tools
+python_tool: PythonInterpreterTool = PythonInterpreterTool(
+    authorized_imports=["math", "sympy", "numpy"]
+)
+calculator_tool: CalculatorTool = CalculatorTool()
+
+# Create advanced tool environment
+vf_env = SmolaToolEnv(
+    dataset=dataset,
+    system_prompt=MATH_SMOLA_PROMPT_TEMPLATE,
+    tools=[python_tool, calculator_tool],  # List[Callable]
+    max_steps=5,
+    message_type="chat"  # Recommended format
+)
+```
+
+## Multi-Turn Conversations
+
+### Custom Multi-Turn Environment
+
+```python
+from verifiers import MultiTurnEnv
+from typing import List, Dict, Any
+
+class MathTutorEnv(MultiTurnEnv):
+    """Interactive math tutoring environment."""
+    
+    def is_completed(
+        self, 
+        messages: List[Dict[str, str]], 
+        state: Dict[str, Any], 
+        **kwargs
+    ) -> bool:
+        """End when student gets correct answer or gives up."""
+        # Check if student got the answer right
+        if state.get("correct_answer_given"):
+            return True
+        
+        # End after 5 exchanges
+        if len(state.get("responses", [])) >= 5:
+            return True
+        
+        return False
+    
+    def env_response(
+        self, 
+        messages: List[Dict[str, str]], 
+        state: Dict[str, Any], 
+        **kwargs
+    ) -> tuple[Dict[str, str], Dict[str, Any]]:
+        """Provide tutoring feedback."""
+        last_message = messages[-1]["content"]
+        correct_answer = state["answer"]
+        
+        # Check if student got it right
+        if correct_answer in last_message:
+            state["correct_answer_given"] = True
+            return {"role": "user", "content": "Great job! You got it right!"}, state
+        
+        # Provide hints
+        hints = [
+            "Try breaking it down step by step.",
+            "What operation do you need to perform?",
+            "Think about what the question is asking for.",
+            "You're close! Double-check your calculation.",
+            "Let me help you with a hint..."
         ]
         
-        super().__init__(
-            dataset=dataset,
-            tools=tools,
-            system_prompt=TOOL_MATH_PROMPT,
-            **kwargs
-        )
+        hint_index = len(state.get("responses", [])) - 1
+        hint = hints[min(hint_index, len(hints) - 1)]
+        
+        return {"role": "user", "content": hint}, state
+
+# Use the custom environment
+vf_env = MathTutorEnv(
+    dataset=dataset,
+    system_prompt="You are a helpful math tutor. Guide the student step by step.",
+    message_type="chat"  # Recommended format
+)
 ```
 
-### Tool Usage Pattern
+## State and Token Information
+
+### Accessing Token-Level Data
 
 ```python
-# Model output with tool calls
-completion = """
-<reasoning>
-I need to solve this differential equation. Let me use Python.
-</reasoning>
+from typing import Dict, Any, List, Union
 
-<tool>
-{
-    "name": "python",
-    "arguments": {
-        "code": "import sympy as sp\nx = sp.Symbol('x')\neq = sp.diff(x**2 + 3*x + 2, x)\nprint(eq)"
+def token_aware_reward(
+    completion: Union[str, List[Dict[str, str]]], 
+    state: Dict[str, Any], 
+    **kwargs
+) -> float:
+    """Reward function that uses token-level information."""
+    
+    # Access token information from state
+    if state.get("responses"):
+        last_response = state["responses"][-1]
+        
+        # Check if we have token-level data
+        if hasattr(last_response, 'choices') and last_response.choices:
+            choice = last_response.choices[0]
+            
+            # Access logprobs if available
+            if hasattr(choice, 'logprobs') and choice.logprobs:
+                logprobs = choice.logprobs.content
+                token_ids = choice.logprobs.token_ids
+                
+                # Calculate average log probability
+                if logprobs:
+                    avg_logprob = sum(logprob.logprob for logprob in logprobs) / len(logprobs)
+                    return max(0.0, min(1.0, (avg_logprob + 5.0) / 5.0))  # Normalize to [0,1]
+    
+    # Fallback to basic reward
+    return 1.0 if "correct" in str(completion).lower() else 0.0
+
+# Use in rubric
+rubric = Rubric(
+    funcs=[correctness_reward, token_aware_reward],
+    weights=[0.8, 0.2]
+)
+```
+
+### Sampling Arguments for Fine-Grained Control
+
+```python
+from typing import Dict, Any
+
+# vLLM-specific sampling arguments
+sampling_args: Dict[str, Any] = {
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 2048,
+    "extra_body": {
+        "skip_special_tokens": False,  # vLLM flag
+        "spaces_between_special_tokens": False,  # vLLM flag
+        "logprobs": True,  # Get token-level logprobs
+        "top_logprobs": 5,  # Top-k logprobs per token
     }
 }
-</tool>
 
-<result>2*x + 3</result>
-
-<reasoning>
-The derivative is 2x + 3. Let me verify this is correct.
-</reasoning>
-
-<answer>2x + 3</answer>
-"""
-```
-
-### Advanced Rubric Design
-
-```python
-from verifiers.rubrics import ToolRubric
-
-# Rewards both correctness and appropriate tool use
-rubric = ToolRubric(
-    tools=tools,
-    weights=[
-        0.6,  # correct_answer
-        0.2,  # tool_execution 
-        0.1,  # format
-        0.1   # tool-specific rewards
-    ]
+# Use in environment
+vf_env = vf.SingleTurnEnv(
+    dataset=dataset,
+    sampling_args=sampling_args
 )
 
-# Encourages:
-# - Correct final answers (60%)
-# - Successful tool usage (20%)
-# - Proper formatting (10%)
-# - Using right tool for task (10%)
+# Or pass during evaluation
+results = vf_env.evaluate(
+    client=client,
+    model="gpt-4",
+    sampling_args=sampling_args
+)
 ```
 
-## Interactive Games: Wordle
+## Training Workflows
 
-The Wordle example demonstrates multi-turn interaction patterns.
-
-### Multi-Turn Environment Design
+### Generate Training Data
 
 ```python
-# From examples/wordle.py
-from verifiers.envs import MultiTurnEnv
+from typing import Dict, Any
 
-class WordleEnv(MultiTurnEnv):
-    def __init__(self, dataset, max_attempts=6, **kwargs):
-        self.max_attempts = max_attempts
-        super().__init__(
-            dataset=dataset,
-            system_prompt=WORDLE_SYSTEM_PROMPT,
-            **kwargs
+# Generate training data with rewards
+results: Dict[str, Any] = vf_env.generate(
+    client=client,
+    model="gpt-4",
+    n_samples=1000,
+    sampling_args=sampling_args
+)
+
+# Process for training
+processed_data = vf_env.process_env_results(
+    prompts=results['prompts'],
+    completions=results['completions'],
+    states=results['states'],
+    rewards=results['rewards'],
+    processing_class=tokenizer
+)
+```
+
+### Custom Training Loop
+
+```python
+from typing import List, Dict, Any
+import torch
+
+# Custom training with environment rewards
+def train_with_environment(
+    model: torch.nn.Module,
+    vf_env: vf.SingleTurnEnv,
+    client: Any,
+    num_epochs: int = 10
+):
+    """Train model using environment rewards."""
+    
+    for epoch in range(num_epochs):
+        # Generate training data
+        results: Dict[str, Any] = vf_env.generate(
+            client=client,
+            model="gpt-4",
+            n_samples=100
         )
-    
-    def env_response(self, messages, state):
-        """Generate Wordle feedback for guess."""
-        last_message = messages[-1]["content"]
-        guess = self.extract_guess(last_message)
-        target = state["target_word"]
         
-        if not self.is_valid_word(guess):
-            return "Invalid word. Please guess a valid 5-letter word.", state
-        
-        # Generate color feedback
-        feedback = self.get_color_feedback(guess, target)
-        state["attempts"] += 1
-        state["history"].append((guess, feedback))
-        
-        if guess == target:
-            state["won"] = True
-            return f"🎉 Correct! The word was {target}.", state
-        
-        return self.format_feedback(feedback), state
-    
-    def is_completed(self, messages, state):
-        """Check if game should end."""
-        return state.get("won", False) or state.get("attempts", 0) >= self.max_attempts
-```
-
-### State Management Pattern
-
-```python
-def initial_state(self, task_data):
-    """Initialize game state."""
-    return {
-        "target_word": task_data["answer"],
-        "attempts": 0,
-        "history": [],
-        "won": False
-    }
-
-def get_color_feedback(self, guess, target):
-    """Generate Wordle-style feedback."""
-    feedback = []
-    for i, (g, t) in enumerate(zip(guess, target)):
-        if g == t:
-            feedback.append("🟩")  # Green - correct position
-        elif g in target:
-            feedback.append("🟨")  # Yellow - wrong position
-        else:
-            feedback.append("⬜")  # Gray - not in word
-    return "".join(feedback)
-```
-
-### Custom Scoring
-
-```python
-def score_rollout_sync(self, prompt, messages, answer, state):
-    """Score based on success and efficiency."""
-    scores = {}
-    
-    # Base success score
-    scores["success"] = 1.0 if state.get("won", False) else 0.0
-    
-    # Efficiency bonus
-    if state.get("won", False):
-        attempts = state.get("attempts", 6)
-        scores["efficiency"] = (7 - attempts) / 6  # More points for fewer guesses
-    else:
-        scores["efficiency"] = 0.0
-    
-    # Strategy score (using feedback effectively)
-    scores["strategy"] = self.evaluate_strategy(state.get("history", []))
-    
-    # Weighted combination
-    scores["reward"] = (
-        scores["success"] * 0.7 +
-        scores["efficiency"] * 0.2 +
-        scores["strategy"] * 0.1
-    )
-    
-    return scores
-```
-
-## Code Generation with Testing
-
-The ARC (Abstract Reasoning Corpus) example shows code generation evaluation.
-
-### Code Evaluation Pattern
-
-```python
-# From examples/arc_1d.py
-from verifiers.rubrics import ToolRubric
-
-class CodeGenRubric(ToolRubric):
-    def evaluate_code(self, code, test_cases):
-        """Run code against test cases."""
-        results = []
-        
-        for test in test_cases:
-            try:
-                # Create safe execution environment
-                namespace = {"input_seq": test["input"]}
-                
-                # Execute generated code
-                exec(code, namespace)
-                
-                # Check output
-                output = namespace.get("output_seq", [])
-                expected = test["output"]
-                
-                results.append(output == expected)
-                
-            except Exception as e:
-                results.append(False)
-        
-        # Return proportion of passed tests
-        return sum(results) / len(results) if results else 0.0
-```
-
-### Structured Code Generation
-
-```python
-CODE_SYSTEM_PROMPT = """Generate Python code to transform the input sequence.
-
-Format your response as:
-<reasoning>
-Analyze the pattern and explain your approach
-</reasoning>
-
-<code>
-def transform(input_seq):
-    # Your transformation logic here
-    return output_seq
-
-output_seq = transform(input_seq)
-</code>"""
-
-parser = XMLParser(fields=["reasoning", "code"])
-```
-
-### Progressive Test Evaluation
-
-```python
-def progressive_scoring(code, test_cases):
-    """Award partial credit for partially correct solutions."""
-    scores = []
-    
-    for i, test in enumerate(test_cases):
-        result = run_test(code, test)
-        
-        if result["status"] == "correct":
-            scores.append(1.0)
-        elif result["status"] == "partial":
-            # Check how close the output is
-            similarity = calculate_similarity(
-                result["output"], 
-                test["expected"]
-            )
-            scores.append(similarity * 0.5)
-        else:
-            scores.append(0.0)
-    
-    # Weight earlier tests more (they're usually simpler)
-    weights = [1.0 / (i + 1) for i in range(len(test_cases))]
-    weighted_score = sum(s * w for s, w in zip(scores, weights))
-    
-    return weighted_score / sum(weights)
-```
-
-## Self-Improvement: DoubleCheck
-
-The DoubleCheck example shows self-verification patterns.
-
-### Two-Stage Verification
-
-```python
-# From examples/doublecheck.py
-from verifiers.envs import DoubleCheckEnv
-
-class MathDoubleCheckEnv(DoubleCheckEnv):
-    def __init__(self, dataset, **kwargs):
-        super().__init__(
-            dataset=dataset,
-            solve_prompt=SOLVE_PROMPT,
-            check_prompt=CHECK_PROMPT,
-            system_prompt=SYSTEM_PROMPT,
-            **kwargs
+        # Process data
+        processed_data = vf_env.process_env_results(
+            prompts=results['prompts'],
+            completions=results['completions'],
+            states=results['states'],
+            rewards=results['rewards']
         )
-    
-    def check_solution(self, solution, check_response):
-        """Determine if solution is verified as correct."""
-        check_parsed = self.parser.parse(check_response)
         
-        # Look for explicit verification
-        is_correct = "correct" in check_parsed.answer.lower()
-        has_error = "error" in check_parsed.reasoning.lower()
+        # Train model (your training logic here)
+        # ...
         
-        return is_correct and not has_error
+        # Evaluate progress
+        eval_results = vf_env.evaluate(
+            client=client,
+            model="gpt-4",
+            num_examples=50
+        )
+        
+        print(f"Epoch {epoch}: Results = {eval_results}")
 ```
 
-### Verification Prompts
+## Complete Working Example
+
+Here's a complete example that demonstrates all the key concepts:
 
 ```python
-SOLVE_PROMPT = "Solve this problem: {question}"
+import verifiers as vf
+from typing import Dict, Any, Union, List
+from datasets import Dataset
+from openai import OpenAI
 
-CHECK_PROMPT = """Review this solution:
+# 1. Load and prepare dataset
+dataset: Dataset = vf.load_example_dataset("gsm8k", split="train")
 
-Problem: {question}
-Solution: {solution}
+# 2. Create custom parser
+class MathParser(vf.Parser):
+    def parse(self, text: str) -> Dict[str, Any]:
+        import re
+        reasoning_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL)
+        answer_match = re.search(r'The answer is (\d+)', text)
+        
+        return {
+            "reasoning": reasoning_match.group(1).strip() if reasoning_match else "",
+            "answer": answer_match.group(1) if answer_match else "",
+        }
 
-Is the solution correct? If not, identify any errors.
+# 3. Create custom rubric
+parser = MathParser()
 
-<reasoning>
-Verify each step of the solution
-</reasoning>
-<answer>
-State whether the solution is "correct" or "incorrect"
-</answer>"""
-```
+def correctness_reward(completion: Union[str, List[Dict[str, str]]], answer: str, **kwargs) -> float:
+    parsed = parser.parse(completion)
+    return 1.0 if parsed["answer"] == answer else 0.0
 
-### Self-Consistency Rewards
+def reasoning_reward(completion: Union[str, List[Dict[str, str]]], **kwargs) -> float:
+    parsed = parser.parse(completion)
+    return 1.0 if len(parsed["reasoning"]) > 20 else 0.0
 
-```python
-def self_consistency_reward(messages, state):
-    """Reward consistent reasoning across solve/check."""
-    solve_reasoning = state["solve_parsed"].reasoning
-    check_reasoning = state["check_parsed"].reasoning
-    
-    # Extract key concepts/numbers from both
-    solve_concepts = extract_concepts(solve_reasoning)
-    check_concepts = extract_concepts(check_reasoning)
-    
-    # Reward mentioning same key ideas
-    overlap = len(solve_concepts & check_concepts)
-    total = len(solve_concepts | check_concepts)
-    
-    return overlap / total if total > 0 else 0.0
-```
-
-## Best Practices from Examples
-
-### 1. Start Simple, Add Complexity
-
-```python
-# Phase 1: Basic environment
-env = SingleTurnEnv(dataset=dataset)
-
-# Phase 2: Add parsing
-env = SingleTurnEnv(
-    dataset=dataset,
-    parser=XMLParser(["answer"])
+rubric = vf.Rubric(
+    funcs=[correctness_reward, reasoning_reward],
+    weights=[0.8, 0.2]
 )
 
-# Phase 3: Add evaluation
-env = SingleTurnEnv(
+# 4. Create environment
+vf_env = vf.SingleTurnEnv(
     dataset=dataset,
-    parser=XMLParser(["reasoning", "answer"]),
-    rubric=Rubric(funcs=[correct_answer], weights=[1.0])
-)
-
-# Phase 4: Multi-criteria evaluation
-env = SingleTurnEnv(
-    dataset=dataset,
+    system_prompt="Think step-by-step inside <think>...</think> tags, then give your answer.",
     parser=parser,
-    rubric=Rubric(
-        funcs=[correct_answer, reasoning_quality, efficiency],
-        weights=[0.6, 0.3, 0.1]
-    )
+    rubric=rubric,
+    message_type="chat"  # Recommended format
 )
-```
 
-### 2. Design for Debugging
-
-```python
-class DebugEnv(SingleTurnEnv):
-    def rollout(self, *args, **kwargs):
-        """Add logging for debugging."""
-        print(f"Prompt: {args[2][:50]}...")
-        
-        completion, state = super().rollout(*args, **kwargs)
-        
-        parsed = self.parser.parse(completion)
-        print(f"Answer extracted: {parsed.answer}")
-        print(f"State: {state}")
-        
-        return completion, state
-```
-
-### 3. Flexible Task Configuration
-
-```python
-def create_math_env(difficulty="easy", tools=False, verification=False):
-    """Factory function for different math environments."""
-    dataset = load_math_dataset(difficulty)
-    
-    if tools and verification:
-        return ToolDoubleCheckMathEnv(dataset)
-    elif tools:
-        return ToolMathEnv(dataset)
-    elif verification:
-        return DoubleCheckMathEnv(dataset)
-    else:
-        return MathEnv(dataset)
-```
-
-### 4. Reusable Components
-
-```python
-# Shared parsers
-MATH_PARSER = XMLParser(["reasoning", "answer"])
-CODE_PARSER = XMLParser(["reasoning", "code"])
-
-# Shared reward functions
-def get_format_reward(parser):
-    return parser.get_format_reward_func()
-
-def get_length_penalty(max_length=1000):
-    def penalty(completion, **kwargs):
-        return max(0, 1 - len(completion) / max_length)
-    return penalty
-
-# Compose into environments
-env = SingleTurnEnv(
-    parser=MATH_PARSER,
-    rubric=Rubric(
-        funcs=[
-            correct_answer,
-            get_format_reward(MATH_PARSER),
-            get_length_penalty(500)
-        ],
-        weights=[0.7, 0.2, 0.1]
-    )
+# 5. Evaluate
+client = OpenAI()
+results: Dict[str, Any] = vf_env.evaluate(
+    client=client,
+    model="gpt-4",
+    num_examples=10
 )
+
+print(f"Results: {results}")
 ```
 
-These examples demonstrate the flexibility and power of the verifiers framework. By understanding these patterns, you can create sophisticated evaluation environments for your own tasks.
+## Key Takeaways
+
+1. **Start with SingleTurnEnv**: Most users should begin with `SingleTurnEnv` for Q&A tasks
+2. **Use Chat Format**: Use `message_type="chat"` for better flexibility and features
+3. **Write Custom Components**: For nontrivial tasks, write custom parsers and rubrics
+4. **Include Format Rewards**: Always include `parser.get_format_reward_func()` in rubrics
+5. **Access Token Information**: Use `state["responses"]` to access token-level data when available
+6. **Use Sampling Args**: Pass vLLM-specific arguments through `sampling_args` for fine-grained control
+7. **Type Hints**: Use proper type hints for better code clarity and IDE support
+
+The examples folder contains many more working implementations that demonstrate these patterns in practice.

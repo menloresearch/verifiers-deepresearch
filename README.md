@@ -31,29 +31,19 @@ RL environments and algorithms should be modular, reusable, and hackable.
 	- `ReasoningGymEnv` -- direct training for any [reasoning-gym](https://github.com/open-thought/reasoning-gym/tree/main/reasoning_gym) task.
 	- `Environment` abstract class for implementing whatever rollout logic you can imagine (go nuts!)
 
-Basic usage for a GRPO training script with 4 GPUs (2 inference + 2 training):
+Basic usage for a GRPO training script with 4 GPUs (3 inference + 1 training):
 
 ```bash
 # launch inference server
-CUDA_VISIBLE_DEVICES=0,1 vf-vllm --model 'Qwen/Qwen2.5-1.5B-Instruct' --tensor-parallel-size 2
+CUDA_VISIBLE_DEVICES=0,1,2 vf-vllm --model 'Qwen/Qwen2.5-1.5B-Instruct' --data-parallel-size 3
 
 # launch training script; copy zero3.yaml or set values globally with `accelerate config`
-CUDA_VISIBLE_DEVICES=2,3 accelerate launch --num-processes 2 --config-file configs/zero3.yaml train.py
+CUDA_VISIBLE_DEVICES=3 accelerate launch --num-processes 1 --config-file configs/zero3.yaml train.py
 ```
 
 See [GRPO Rules of Thumb](#grpo-rules-of-thumb) for further discussion of hyperparameters and best practices; the easiest way to reduce memory requirements is by reducing `per_device_train_batch_size` and increasing `gradient_accumulation_steps` accordingly.
 
-### Citation
 
-If you use this code in your research, please cite:
-
-```bibtex
-@article{brown2025verifiers,
-  title={Verifiers: Reinforcement Learning with LLMs in Verifiable Environments},
-  author={Brown, William},
-  year={2025}
-}
-```
 
 ## Getting Started
 
@@ -62,14 +52,12 @@ If you use this code in your research, please cite:
 To install from PyPI, do:
 
 ```bash
-uv add 'verifiers[all]' && uv pip install flash-attn --no-build-isolation
+uv add 'verifiers[all]' && uv pip install flash-attn==2.7.4.post1 --no-build-isolation
 ```
 
 To use the latest `main` branch, do:
 ```bash
-git clone https://github.com/willccbb/verifiers.git
-cd verifiers
-uv sync --extra all && uv pip install flash-attn --no-build-isolation
+uv add 'verifiers[all]' @ git+https://github.com/willccbb/verifiers.git && uv pip install flash-attn --no-build-isolation
 ```
 
 For CPU development (API-only, no training), just do:
@@ -78,8 +66,18 @@ uv add verifiers
 ```
 and install additional tool + environment dependencies (e.g. `textarena`, `reasoning-gym`, `vllm`) as needed.
 
+
+For developing contributions to the core repository, do:
+```bash
+git clone https://github.com/willccbb/verifiers.git
+cd verifiers
+uv sync --all-extras && uv pip install flash-attn --no-build-isolation
+```
+
+
 **Troubleshooting:**
 - Ensure your `wandb` and `huggingface-cli` logins are set up (or set `report_to=None` in `training_args`). You should also have something set as your `OPENAI_API_KEY` in your environment (can be a dummy key for vLLM). 
+- If using high max concurrency, increase the number of allowed open sockets (e.g. `ulimit -n 4096`)
 - On some setups, inter-GPU communication can [hang](https://github.com/huggingface/trl/issues/2923) or crash during vLLM weight syncing. This can usually be alleviated by setting (or unsetting) `NCCL_P2P_DISABLE=1` in your environment. Try this as your first step if you experience NCCL-related issues.
 - If problems persist, please open an [issue](https://github.com/willccbb/verifiers/issues).
 
@@ -122,7 +120,7 @@ from openai import OpenAI
 client = OpenAI(base_url="https://api.deepseek.com", api_key=os.getenv('DEEPSEEK_API_KEY'))
 
 # evaluation
-results = vf_env.evaluate(client, model="deepseek-chat", num_samples=100)
+results = vf_env.evaluate(client, model="deepseek-chat", num_examples=100)
 print(results['rewards_avg'])
 
 # datasets
@@ -178,8 +176,8 @@ class YourMultiTurnEnv(MultiTurnEnv):
   def is_completed(self, messages: list[dict], state: dict, **kwargs: Any) -> bool:
     # return whether or not rollout is completed
 
-  def env_response(self, messages: list[dict], state: dict, **kwargs: Any) -> tuple[dict, dict]:
-    # return environment response + updated state for a message-dict sequence
+  def env_response(self, messages: list[dict], state: dict, **kwargs: Any) -> tuple[list[dict], dict]:
+    # return environment responses + updated state for a message-dict sequence
 
 class YourCustomEnv(Environment):
 	...
@@ -202,6 +200,7 @@ class YourCustomEnv(Environment):
 	- Using more `num_generations` (larger group size)
 	- Using LoRA adapters
 	- Difficulty filtering (expensive up front)
+        - Stay as much on policy as possible by decreasing the number of update steps per batch to (`num_iterations`) 1
 - Tricks whose benefit remains up-for-debate or context-dependent:
 	- High `beta` values (`0.1+`)
 	- Dr. GRPO vs GRPO
@@ -214,6 +213,22 @@ class YourCustomEnv(Environment):
 - For successful training, you generally want diversity of reward scores within each group of responses for a prompt (see DAPO [paper](https://arxiv.org/pdf/2503.14476), Sec. 3.2)
 - The *best* way to increase diversity is to ensure that your tasks are of an appropriate difficulty for your model (not too easy, not too hard)
 - See Hugging Face's [open-r1](https://huggingface.co/spaces/open-r1/README/discussions/20) logbook for lots of discussion, tips, and experimental findings
+
+### Development Guidelines
+
+Verifiers is intented to be a lightweight set of reusable components for developing, evaluating, and training with novel RL environments. We recommend that you **install** the repo either from 
+
+### Citation
+
+If you use this code in your research, please cite:
+
+```bibtex
+@article{brown2025verifiers,
+  title={Verifiers: Reinforcement Learning with LLMs in Verifiable Environments},
+  author={Brown, William},
+  year={2025}
+}
+```
 
 
 ### Release Notes - v0.1.0 
@@ -242,10 +257,3 @@ Not included, but planned for later releases:
 - Tokenizer endpoint exposed for better token-level + turn-level mechanics (edge case handling, token-level rewards)
 - More flexible abstractions for dynamic batch construction + rollout reuse
 - FSDP (via prime-rl) 
-
-
-
-
-
-
-

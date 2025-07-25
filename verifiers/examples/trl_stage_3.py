@@ -3,7 +3,7 @@ from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
-from verifiers.utils import load_example_dataset
+from verifiers.utils.data_utils import load_example_dataset
 import argparse
 
 """
@@ -29,18 +29,65 @@ Your primary purpose is to help users with tasks that require extensive online r
 Available tools:
 {tool_descriptions}
 
-In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
+When handling user queries:
 
-1. When you need to search for information, call the web_search tool using this exact XML format:
+1. When you need to search for information, call the "web_search" tool using this exact XML format:
 <tool_call>
 {{"name": "web_search", "args": {{"query": "your search query here"}}}}
 </tool_call>
-2. If search results show promising URLs/documents but you need more detailed information, use the visit_tool tool:
+
+2. If search results show promising URLs/documents but you need more detailed information, use the "visit_tool" tool:
 <tool_call>
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
+
 3. Tool results will appear inside <result>...</result> tags
-4. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+
+4. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+
+5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+
+Example query and response flow:
+User: "When was McDonald's founded and who was its founder?"
+
+
+This question has two parts:
+1. The founding date of McDonald's
+2. The founder(s) of McDonald's
+I'll search for this information first, then visit specific pages if needed.
+
+
+<tool_call>
+{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
+</tool_call>
+
+<result>
+Result 1:
+Title: McDonald's Corporation History
+URL: doc_1
+Preview: McDonald's was founded in 1940 by Richard and Maurice McDonald in San Bernardino, California...
+
+Result 2:
+Title: Ray Kroc and McDonald's Expansion
+URL: doc_2
+Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
+</result>
+
+<tool_call>
+{{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
+</tool_call>
+
+<result>
+Title: McDonald's Corporation History
+URL: doc_1
+
+Full Content:
+McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
+</result>
+
+<answer>
+McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
+</answer>
 
 In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
 
@@ -51,7 +98,9 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
-6. Remember to visit all the page you search using visit_page
+6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", and only use ONE tool per message.
+7. Do not say "further research is required" or offer vague conclusions if a confident answer can potentially be found via "visit_tool".
+8. Always prefer action (searching/visit) over inaction (hedging), and do not give up early if the answer is not immediately available.
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
 # /no_think
@@ -70,9 +119,9 @@ def parse_args():
                         help="Output directory path")
     parser.add_argument("--learning_rate", type=float, default=3e-6,
                         help="Learning rate")
-    parser.add_argument("--lr_scheduler_type", type=str, default="constant_with_warmup",
+    parser.add_argument("--lr_scheduler_type", type=str, default="warmup_stable_decay",
                         choices=["linear", "cosine", "cosine_with_restarts",
-                                 "polynomial", "constant", "constant_with_warmup"],
+                                 "polynomial", "constant", "constant_with_warmup", "warmup_stable_decay"],
                         help="Learning rate scheduler type")
     parser.add_argument("--warmup_steps", type=int, default=20,
                         help="Number of warmup steps")
@@ -166,6 +215,8 @@ def parse_args():
                         help="Push model to Hugging Face Hub")
     parser.add_argument("--hub_model_id", type=str, default=None,
                         help="Hugging Face Hub model ID")
+    parser.add_argument("--hub_private_repo", type=str, default=True,
+                        help="Hugging Face Hub private repo")
 
     # Precision
     parser.add_argument("--bf16", action="store_true", default=True,
@@ -192,7 +243,7 @@ def main():
             print(
                 f"Error reading file: {e}, using default tool prompt:\n {TOOL_PROMPT}")
 
-    vf_env = vf.ToolEnv(
+    vf_env = vf.OldToolEnv(
         dataset=train_dataset,
         system_prompt=TOOL_PROMPT,
         llm_fields=["think", ("tool_call", "answer")],
@@ -218,7 +269,9 @@ def main():
     # Set hub model ID if not specified
     if args.push_to_hub and not training_args.hub_model_id:
         training_args.hub_model_id = args.run_name
-
+    if args.lr_scheduler_type == "warmup_stable_decay":
+        print("Using warmup_stable_decay")
+        setattr(training_args, "lr_scheduler_kwargs", { "num_decay_steps":128})
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,

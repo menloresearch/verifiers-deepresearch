@@ -12,23 +12,30 @@ class AsyncDataLoaderWrapper:
     without advancing the main iterator, allowing async generation to work
     ahead while training continues on current batches.
     """
-    
+
     def __init__(self, dataloader: DataLoader, buffer_size: int = 5):
         self.dataloader = dataloader
         self.buffer_size = buffer_size
         self._buffer = deque(maxlen=buffer_size)
-        self._iterator = None
+        self._current_iterator = None  # Iterator for current epoch
+        self._next_iterator = None     # Iterator for next epoch (created when needed)
         self._lock = threading.Lock()
         self._exhausted = False
-        self._current_epoch = 0
         self._current_batch = None  # Track the current batch
         
     def __iter__(self):
         """Reset and return iterator"""
-        self._iterator = iter(self.dataloader)
-        self._buffer.clear()
-        self._exhausted = False
-        self._current_batch = None
+        with self._lock:
+            # If we pre-created an iterator for the next epoch, use it
+            if self._next_iterator is not None:
+                self._current_iterator = self._next_iterator
+                self._next_iterator = None
+            else:
+                self._current_iterator = iter(self.dataloader)
+            
+            self._buffer.clear()
+            self._exhausted = False
+            self._current_batch = None
         return self
         
     def __next__(self):
@@ -44,7 +51,7 @@ class AsyncDataLoaderWrapper:
             # Store current batch before returning
             self._current_batch = self._buffer.popleft()
             return self._current_batch
-            
+
     def peek_ahead(self, n: int = 1) -> List[Any]:
         """
         Peek at the next n batches without consuming them.
@@ -69,15 +76,32 @@ class AsyncDataLoaderWrapper:
             self._fill_buffer_single()
             
     def _fill_buffer_single(self):
-        """Add a single batch to the buffer"""
-        if self._iterator is None:
-            self._iterator = iter(self.dataloader)
-            
+        """Add a single batch to the buffer""" 
+        # Initialize current iterator if needed
+        if self._current_iterator is None:
+            self._current_iterator = iter(self.dataloader)
+ 
         try:
-            batch = next(self._iterator)
+            # Try to get batch from current iterator
+            batch = next(self._current_iterator)
             self._buffer.append(batch)
         except StopIteration:
-            self._exhausted = True
+            # Current epoch exhausted - try to create iterator for next epoch
+            if self._next_iterator is None:
+                try:
+                    self._next_iterator = iter(self.dataloader)
+                except Exception:
+                    # Can't create new iterator, we're done
+                    self._exhausted = True
+                    return
+            
+            # Try to get batch from next epoch's iterator
+            try:
+                batch = next(self._next_iterator)
+                self._buffer.append(batch)
+            except StopIteration:
+                # Next iterator also exhausted, we're truly done
+                self._exhausted = True
             
     def get_future_batches(self, start_offset: int, count: int) -> List[Any]:
         """
