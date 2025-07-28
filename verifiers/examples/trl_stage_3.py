@@ -1,10 +1,11 @@
 import os
-from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
 from verifiers.utils.data_utils import load_example_dataset
+from verifiers.utils.tool_utils import convert_func_to_oai_tool
 import argparse
+import jinja2
 
 """
 Multi-GPU training (single node, 2 training + 6 inference)
@@ -23,10 +24,18 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python verifiers/inference/vllm_server.py \
 CUDA_VISIBLE_DEVICES=4,5,6,7 accelerate launch --config-file configs/zero3.yaml --num_processes 4 verifiers/examples/trl_no_think.py
 """
 
-TOOL_PROMPT = """
+QWEN3_TOOLS_TEMPLATE = jinja2.Template(r"""
+{{- "# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>" }}
+{%- for tool in tools %}
+    {{- "\n" }}
+    {{- tool | tojson }}
+{%- endfor %}
+{{- "\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n" }}
+""".strip())
+
+SYSTEM_PROMPT = """
 Your primary purpose is to help users with tasks that require extensive online research.
 
-Available tools:
 {tool_descriptions}
 
 When handling user queries:
@@ -227,7 +236,7 @@ def parse_args():
 
 
 def main():
-    global TOOL_PROMPT
+    global SYSTEM_PROMPT
     args = parse_args()
     if args.wandb_project:
         os.environ["WANDB_PROJECT"] = args.wandb_project
@@ -238,17 +247,21 @@ def main():
     if args.system_prompt_file:
         try:
             with open(args.system_prompt_file, 'r') as file:
-                TOOL_PROMPT = file.read()
+                SYSTEM_PROMPT = file.read()
         except IOError as e:
             print(
-                f"Error reading file: {e}, using default tool prompt:\n {TOOL_PROMPT}")
+                f"Error reading file: {e}, using default tool prompt:\n {SYSTEM_PROMPT}")
+
+    tools = [web_search, visit_tool]
+    oai_tools = [convert_func_to_oai_tool(tool) for tool in tools]
+    TOOL_PROMPT = QWEN3_TOOLS_TEMPLATE.render(tools=oai_tools)
 
     vf_env = vf.OldToolEnv(
         dataset=train_dataset,
-        system_prompt=TOOL_PROMPT,
-        llm_fields=["think", ("tool_call", "answer")],
+        system_prompt=SYSTEM_PROMPT.format(tool_descriptions=TOOL_PROMPT),
         few_shot=[],
-        tools=[web_search, visit_tool],
+        tools=tools,
+        format_prompt=False,
         max_turns=args.max_steps_env,
     )
     vf_env.rubric.reward_weights = [
