@@ -19,11 +19,12 @@ from verifiers.types import (
 
 class MultiTurnEnv(Environment):
     def __init__(
-        self, message_type: MessageType = "chat", max_turns: int = 10, **kwargs
+        self, message_type: MessageType = "chat", max_turns: int = 10, max_tokens = 4096, **kwargs
     ):
         super().__init__(**kwargs)
         self.max_turns = max_turns
         self.message_type = message_type
+        self.max_tokens = max_tokens
 
     @abstractmethod
     def is_completed(self, messages: Messages, state: State, **kwargs) -> bool:
@@ -81,6 +82,20 @@ class MultiTurnEnv(Environment):
                 sampling_args=sampling_args,
                 message_type=self.message_type,
             )
+            if response.usage.completion_tokens >= self.max_tokens -1:
+                is_completed = True
+                if self.message_type == "chat":
+                    response.choices[0].message.content = "[ERROR] max_tokens_reached"
+                    response_message: ChatMessage = {
+                    "role": "assistant",
+                    "content": "[ERROR] max_tokens_reached",
+                }
+                    completion.append(response_message)
+                else:
+                    response.choices[0].text = "[ERROR] max_tokens_reached"
+                    completion += "[ERROR] max_tokens_reached"
+                state["responses"].append(response)
+                break
             state["responses"].append(response)
             if self.message_type == "chat":
                 assert isinstance(rollout, list)

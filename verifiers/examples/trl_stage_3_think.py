@@ -30,32 +30,34 @@ Available tools:
 {tool_descriptions}
 
 When handling user queries:
+1. Think step-by-step about the query inside <think>...</think> tags:
+   - Break complex questions into smaller, searchable parts
+   - Identify key search terms and parameters
+   - Consider what information is needed to provide a complete answer
 
-1. When you need to search for information, call the "web_search" tool using this exact XML format:
+2. When you need to search for information, call the "web_search" tool using this exact XML format:
 <tool_call>
 {{"name": "web_search", "args": {{"query": "your search query here"}}}}
 </tool_call>
 
-2. If search results show promising URLs/documents but you need more detailed information, use the "visit_tool" tool:
+3. If search results show promising URLs/documents but you need more detailed information, use the "visit_tool" tool:
 <tool_call>
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
 
-3. Tool results will appear inside <result>...</result> tags
-
-4. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+4. Tool response results will appear inside <result>...</result> tags
 
 5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
-Example query and response flow:
+## Example query and response flow:
 User: "When was McDonald's founded and who was its founder?"
 
-
+<think>
 This question has two parts:
 1. The founding date of McDonald's
 2. The founder(s) of McDonald's
 I'll search for this information first, then visit specific pages if needed.
-
+</think>
 
 <tool_call>
 {{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
@@ -89,6 +91,8 @@ McDonald's was founded on May 15, 1940, in San Bernardino, California by brother
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
 </answer>
 
+#####################################
+
 In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
 
 Tool Use Rules
@@ -98,14 +102,14 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
-6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", and only use ONE tool per message.
+6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", you can visit many pages at one time.
 7. Do not say "further research is required" or offer vague conclusions if a confident answer can potentially be found via "visit_tool".
 8. Always prefer action (searching/visit) over inaction (hedging), and do not give up early if the answer is not immediately available.
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
 # /no_think
 
-
+# 5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DeepResearch training with configurable parameters")
@@ -117,7 +121,7 @@ def parse_args():
                         help="Name for the training run")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory path")
-    parser.add_argument("--learning_rate", type=float, default=3e-6,
+    parser.add_argument("--learning_rate", type=float, default=1.5e-6,
                         help="Learning rate")
     parser.add_argument("--lr_scheduler_type", type=str, default="warmup_stable_decay",
                         choices=["linear", "cosine", "cosine_with_restarts",
@@ -165,7 +169,7 @@ def parse_args():
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
                         help="Number of generations per prompt")
-    parser.add_argument("--num_iterations", type=int, default=4,
+    parser.add_argument("--num_iterations", type=int, default=3,
                         help="Number of PPO iterations")
     parser.add_argument("--beta", type=float, default=0.01,
                         help="KL penalty coefficient")

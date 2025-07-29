@@ -767,7 +767,7 @@ class GRPOTrainer(Trainer):
 
         # All processes wait if generation is happening
         while is_generating:
-            time.sleep(0.5)
+            time.sleep(10)
             self.logger.info(
                 "Waiting for background batch generation to complete before weight syncing."
             )
