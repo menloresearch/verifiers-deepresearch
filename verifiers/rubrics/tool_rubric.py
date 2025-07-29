@@ -91,7 +91,7 @@ class ToolRubric(Rubric):
     def __init__(
         self,
         parser: Parser = XMLParser(fields=["think", ("tool_call", "answer")]),
-        env_parser: Parser = XMLParser(fields=["result"]),
+        env_parser: Parser = XMLParser(fields=["tool_response"]),
         tools: List[Callable] = [],
     ):
         super().__init__(parser=parser)
@@ -313,7 +313,7 @@ class ToolRubric(Rubric):
 
                 if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "answer") > 0:
                     return 0.  # total_reward -= 2
-                if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "result") > 0:
+                if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "tool_response") > 0:
                     return 0.  # total_reward -= 2
         if num_turn > 0:
             total_reward += num_answer*(num_think + num_tool)/num_turn
@@ -371,12 +371,12 @@ class ToolRubric(Rubric):
                 parsed = self.parser.parse(msg['content'])
                 if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                     # Found a properly formatted tool message
-                    if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
+                    if i + 1 < len(completion) and completion[i + 1]['role'] == 'tool':
                         tool_attempts += 1
                         # Check response with env_parser
                         parsed_response = self.env_parser.parse(
                             completion[i + 1]['content'])
-                        if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
+                        if hasattr(parsed_response, 'tool_response') and parsed_response.tool_response is not None and not parsed_response.tool_response.startswith("Error:"):
                             successful_executions += 1
                             tool_name = json.loads(
                                 parsed.tool_call).get("name")
@@ -419,9 +419,9 @@ class ToolRubric(Rubric):
                             completion[i + 1]["content"]
                         )
                         if (
-                            hasattr(parsed_response, "result")
-                            and parsed_response.result is not None
-                            and not parsed_response.result.startswith("Error:")
+                            hasattr(parsed_response, "tool_response")
+                            and parsed_response.tool_response is not None
+                            and not parsed_response.tool_response.startswith("Error:")
                         ):
                             successful_executions += 1
                             tool_name = json.loads(
@@ -478,9 +478,9 @@ class ToolRubric(Rubric):
                                         completion[i + 1]["content"]
                                     )
                                     if (
-                                        hasattr(parsed_response, "result")
-                                        and parsed_response.result is not None
-                                        and not parsed_response.result.startswith(
+                                        hasattr(parsed_response, "tool_response")
+                                        and parsed_response.tool_response is not None
+                                        and not parsed_response.tool_response.startswith(
                                             "Error:"
                                         )
                                     ):
@@ -528,9 +528,9 @@ class ToolRubric(Rubric):
                                         completion[i + 1]["content"]
                                     )
                                     if (
-                                        hasattr(parsed_response, "result")
-                                        and parsed_response.result is not None
-                                        and not parsed_response.result.startswith(
+                                        hasattr(parsed_response, "tool_response")
+                                        and parsed_response.tool_response is not None
+                                        and not parsed_response.tool_response.startswith(
                                             "Error:"
                                         )
                                     ):

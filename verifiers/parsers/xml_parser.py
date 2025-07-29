@@ -8,7 +8,7 @@ from verifiers.types import ChatMessage, Messages
 
 class XMLParser(Parser):
     def __init__(
-        self, fields: List[Union[str, Tuple[str, ...]]], answer_field: str = "answer"
+        self, fields: List[Union[str, Tuple[str, ...]]], answer_field: str = "answer", tool_field: str = "tool_call"
     ):
         """
         Initialize the parser with field definitions.
@@ -25,6 +25,7 @@ class XMLParser(Parser):
             Tuple[str, List[str]]
         ] = []  # List of (canonical, [alternatives])
         self.answer_field = answer_field
+        self.tool_field = tool_field
         seen = set()
         for field in fields:
             if isinstance(field, str):
@@ -70,6 +71,32 @@ class XMLParser(Parser):
                 else:
                     results[alt] = None
         return SimpleNamespace(**results)
+    
+    def parse_many(self, text: str, strip: bool = True) -> Any:
+        """
+        Parse the given XML string and return an object with attributes corresponding
+        to all allowed tags in the schema.
+
+        For each field defined:
+          - If it is a simple field (e.g. 'reasoning'), the output object will have
+            an attribute 'reasoning' set to a list of text contents (or empty list if none).
+          - If it is defined with alternatives (e.g. ("code", "answer")), the output
+            object will have attributes for *each* allowed tag name, each containing
+            a list of values found (empty list if none).
+        """
+        results: Dict[str, List[Optional[str]]] = {}
+        for canonical, alternatives in self._fields:
+            # For each allowed alternative tag, search independently.
+            for alt in alternatives:
+                # Regex pattern to capture all contents between the tags
+                pattern = rf"<{alt}>\s*(.*?)\s*</{alt}>"
+                matches = re.findall(pattern, text, re.DOTALL)
+                if matches:
+                    results[alt] = [m.strip() if strip else m for m in matches]
+                else:
+                    results[alt] = []
+        return SimpleNamespace(**results)
+            
 
     def parse_answer(self, completion: Messages) -> str | None:
         """Extract the last answer from a completion."""

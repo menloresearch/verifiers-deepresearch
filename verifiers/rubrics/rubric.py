@@ -162,7 +162,7 @@ class Rubric:
         format_efficiency_reward = (correct_answer_reward)*math.log(1.001 + correct_answer_reward*b ) #+  0.5*(num_xml_reward + visit_tool_reward) # sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
         rewards["format_and_efficient_reward"] = format_efficiency_reward
         # correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = reward_scores
-        if abs(format_func - 0.12) < 1e-6:
+        if abs(format_func - 0.2) < 1e-6:
             format_func = 1
         else:
             format_func = 0.
@@ -171,7 +171,7 @@ class Rubric:
             visit_tool_reward = 0.
         elif visit_tool_reward*5 >0.8:
             visit_tool_reward = 1.
-        rewards['reward'] = correct_answer_reward *num_xml_reward*format_func #* visit_tool_reward*5
+        rewards['reward'] = correct_answer_reward *num_xml_reward*format_func*efficient_thinking_reward*5 #* visit_tool_reward*5
         return rewards
 
     async def score_rollouts(
