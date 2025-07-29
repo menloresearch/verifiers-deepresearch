@@ -250,6 +250,7 @@ def main():
         few_shot=[],
         tools=[web_search, visit_tool],
         max_turns=args.max_steps_env,
+        max_tokens=args.max_completion_length
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #

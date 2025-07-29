@@ -45,16 +45,13 @@ When handling user queries:
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
 
-4. Tool results will appear inside <result>...</result> tags
+4. Tool response results will appear inside <result>...</result> tags
 
-5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
-6. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
-
-Example query and response flow:
+## Example query and response flow:
 User: "When was McDonald's founded and who was its founder?"
 
-Assistant:
 <think>
 This question has two parts:
 1. The founding date of McDonald's
@@ -66,7 +63,6 @@ I'll search for this information first, then visit specific pages if needed.
 {{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
 </tool_call>
 
-User:
 <result>
 Result 1:
 Title: McDonald's Corporation History
@@ -79,17 +75,10 @@ URL: doc_2
 Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
 </result>
 
-Assistant:
-<think>
-"doc_1" with title "McDonald's Corporation History" might contain information that we want to answer the question, try visiting it.
-</think>
-
 <tool_call>
 {{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
 </tool_call>
 
-
-User:
 <result>
 Title: McDonald's Corporation History
 URL: doc_1
@@ -98,16 +87,11 @@ Full Content:
 McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
 </result>
 
-Assistant:
-<think>
-The result said that "McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald ..."
-</think>
-
 <answer>
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
 </answer>
 
-
+#####################################
 
 In this environment you have access to a set of tools you can use to answer the user's question. You can use one tool per message, and will receive the result of that tool use in the user's response. You use tools step-by-step to accomplish a given task, with each tool use informed by the result of the previous tool use.
 
@@ -118,14 +102,14 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
-6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", and only use ONE tool per message.
+6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", you can visit many pages at one time.
 7. Do not say "further research is required" or offer vague conclusions if a confident answer can potentially be found via "visit_tool".
 8. Always prefer action (searching/visit) over inaction (hedging), and do not give up early if the answer is not immediately available.
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
 # /no_think
 
-
+# 5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DeepResearch training with configurable parameters")
@@ -270,6 +254,7 @@ def main():
         few_shot=[],
         tools=[web_search, visit_tool],
         max_turns=args.max_steps_env,
+        max_tokens=args.max_completion_length
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #

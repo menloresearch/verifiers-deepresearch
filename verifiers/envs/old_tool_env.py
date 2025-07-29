@@ -24,7 +24,8 @@ def infer_schema_from_function(func: Callable) -> Dict[str, Any]:
     return_description = ""
     for part in doc_parts:
         if part.startswith("Examples:"):
-            examples = [line.strip() for line in part.split("\n")[1:] if line.strip()]
+            examples = [line.strip()
+                        for line in part.split("\n")[1:] if line.strip()]
         elif part.startswith("Returns:"):
             return_description = part.split("\n")[1].strip()
 
@@ -43,7 +44,7 @@ def infer_schema_from_function(func: Callable) -> Dict[str, Any]:
             if part.strip().startswith("Args:"):
                 for line in part.split("\n")[1:]:
                     if line.strip().startswith(f"{name}:"):
-                        param_doc = line.strip()[len(name) + 1 :].strip()
+                        param_doc = line.strip()[len(name) + 1:].strip()
 
         args[name] = {
             "type": str(
@@ -97,18 +98,21 @@ class ToolEnv(MultiTurnEnv):
         tools: List[Callable] = [],
         system_prompt: str = "",
         format_prompt: bool = True,
-        parser: XMLParser = XMLParser(fields=["think", ("tool_call", "answer")]),
+        parser: XMLParser = XMLParser(
+            fields=["think", ("tool_call", "answer")]),
         env_parser: XMLParser = XMLParser(fields=["result"]),
         max_turns: int = 10,
         **kwargs,
     ):
         rubric = ToolRubric(tools=tools, parser=parser, env_parser=env_parser)
-        self.tool_schemas = [infer_schema_from_function(tool) for tool in tools]
+        self.tool_schemas = [
+            infer_schema_from_function(tool) for tool in tools]
         self.tools = {tool.__name__: tool for tool in tools}
 
         if format_prompt:
             tool_descriptions = format_tool_descriptions(self.tool_schemas)
-            formatted_prompt = system_prompt.format(tool_descriptions=tool_descriptions)
+            formatted_prompt = system_prompt.format(
+                tool_descriptions=tool_descriptions)
         else:
             formatted_prompt = system_prompt
         super().__init__(
@@ -136,7 +140,7 @@ class ToolEnv(MultiTurnEnv):
         try:
             command = json.loads(tool_json)
             if not isinstance(command, dict):
-                return 'Error: Tool command must be a JSON object, e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
+                return 'Error: Parse tool '+tool_json+ ' failed. Tool command must be a JSON object, e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
 
             tool_name = command.get("name")
             if not tool_name:
@@ -168,31 +172,43 @@ class ToolEnv(MultiTurnEnv):
             return str(result)
         except Exception as e:
             return (
-                f"Error: {str(e)}. "
-                + 'Please format your tool call as \'{{"name": "tool_name", "args": {{"arg1": "value1", "arg2": "value2"}}}}\''
+                f"Error: call tool {tool_json} with error: '{str(e)}'. "
+                + 'Please format your tool call as \'{"name": "tool_name", "args": {{"arg1": "value1", "arg2": "value2"}}\''
             )
 
     def env_response(
         self, messages: Messages, state: State, **kwargs
     ) -> Tuple[Message, State]:
-        try:
-            parsed = self.parser.parse(messages[-1]["content"])
-            # Check if we got a valid tool field (not just None from failed parsing)
-            if hasattr(parsed, "tool_call") and parsed.tool_call is not None:
-                result = self.call_tool(parsed.tool_call)
-                if len(result.strip()) > 0:
-                    return [{
-                        "role": "user",
-                        "content": self.env_parser.format(result=result),
-                    }], state
-                else:
-                    return [{
-                        "role": "user",
-                        "content": "Error: Tool execution returned empty output.",
-                    }], state
-        except Exception:
-            pass
+        parsed = self.parser.parse_many(messages[-1]["content"])
+        results = []
+        # Check if we got a valid tool field (not just None from failed parsing)
+        if hasattr(parsed, "tool_call") and parsed.tool_call is not None:
+            for tool in parsed.tool_call:
+                try:
+                    result = self.call_tool(tool)
+                    if len(result.strip()) > 0:
+                        results += [{
+                            "role": "tool",
+                            "content": self.env_parser.format(result=result),
+                        }]
+                    else:
+                        results += [{
+                            "role": "tool",
+                            "content": "Error: Tool execution returned empty output.",
+                        }]
+                except Exception as e:
+                    print(e, tool, type(tool))
+                    results += [{
+                        "role": "tool",
+                        "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
+                    }]
+            if len(results) == 0:
+                return [{
+                    "role": "tool",
+                    "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
+                }], state
+            return results, state
         return [{
-            "role": "user",
+            "role": "tool",
             "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
         }], state
