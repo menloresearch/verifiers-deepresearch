@@ -45,7 +45,7 @@ When handling user queries:
 {{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
 
-4. Tool response results will appear inside <result>...</result> tags
+4. Tool response results will appear inside <tool_response>...</tool_response> tags
 
 5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
@@ -63,7 +63,7 @@ I'll search for this information first, then visit specific pages if needed.
 {{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
 </tool_call>
 
-<result>
+<tool_response>
 Result 1:
 Title: McDonald's Corporation History
 URL: doc_1
@@ -73,19 +73,19 @@ Result 2:
 Title: Ray Kroc and McDonald's Expansion
 URL: doc_2
 Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
-</result>
+</tool_response>
 
 <tool_call>
 {{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
 </tool_call>
 
-<result>
+<tool_response>
 Title: McDonald's Corporation History
 URL: doc_1
 
 Full Content:
 McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
-</result>
+</tool_response>
 
 <answer>
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.

@@ -100,7 +100,7 @@ class ToolEnv(MultiTurnEnv):
         format_prompt: bool = True,
         parser: XMLParser = XMLParser(
             fields=["think", ("tool_call", "answer")]),
-        env_parser: XMLParser = XMLParser(fields=["result"]),
+        env_parser: XMLParser = XMLParser(fields=["tool_response"]),
         max_turns: int = 10,
         **kwargs,
     ):
@@ -135,12 +135,12 @@ class ToolEnv(MultiTurnEnv):
     ) -> bool:
         return self.parser.parse_answer(messages) is not None
 
-    def call_tool(self, tool_json: str, max_chars: int = 1024, **kwargs) -> str:
+    def call_tool(self, tool_json: str, max_chars: int = 8192, **kwargs) -> str:
         """Call a tool based on JSON command."""
         try:
             command = json.loads(tool_json)
             if not isinstance(command, dict):
-                return 'Error: Parse tool '+tool_json+ ' failed. Tool command must be a JSON object, e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
+                return 'Error: Parse tool '+tool_json + ' failed. Tool command must be a JSON object, e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
 
             tool_name = command.get("name")
             if not tool_name:
@@ -187,28 +187,27 @@ class ToolEnv(MultiTurnEnv):
                 try:
                     result = self.call_tool(tool)
                     if len(result.strip()) > 0:
-                        results += [{
-                            "role": "tool",
-                            "content": self.env_parser.format(result=result),
-                        }]
+                        results.append(self.env_parser.format(
+                            tool_response=result))
+
                     else:
-                        results += [{
-                            "role": "tool",
-                            "content": "Error: Tool execution returned empty output.",
-                        }]
+                        results.append(
+                            f"<tool_response>\nError: Tool {tool} execution returned empty output.\n</tool_response>")
+
                 except Exception as e:
                     print(e, tool, type(tool))
-                    results += [{
-                        "role": "tool",
-                        "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
-                    }]
+                    results.append(
+                        f"<tool_response>\nError: Tool command {tool} not found or invalid XML format. Please ensure correct formatting.\n</tool_response>")
             if len(results) == 0:
                 return [{
-                    "role": "tool",
-                    "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
+                    "role": "user",
+                    "content": "<tool_response>\nError: Tool command not found or invalid XML format. Please ensure correct formatting.\n</tool_response>\n",
                 }], state
-            return results, state
+
+            results = "\n".join(results)
+
+            return [{"role": "user", "content": results}], state
         return [{
-            "role": "tool",
-            "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting.",
+            "role": "user",
+            "content": "<tool_response>\nError: Tool command not found or invalid XML format. Please ensure correct formatting.</tool_response>",
         }], state
