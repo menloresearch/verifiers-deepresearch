@@ -45,8 +45,8 @@ def web_search(query: str) -> str:
             text = doc.get('text', '').strip()
             
             # Extract or generate URL from metadata
-            metadata = doc.get('metadata', {})
-            url = metadata.get('url', metadata.get('source', f"doc_{i}"))
+            # metadata = doc.get('metadata', {})
+            url = f"doc_{doc.get('doc_id')}"
             
             # Create preview (first 2-3 sentences)
             preview = _create_preview(text)
@@ -82,14 +82,11 @@ def visit_tool(url: str) -> str:
     try:
         # For RAG server, we need to query for the specific document
         payload = {
-            "queries": [f"url:{url}"],
-            "topk_retrieval": 1,
-            "topk_rerank": 1,
-            "return_scores": False
+            "url": url
         }
         
         response = requests.post(
-            f"{server_url}/retrieve",
+            f"{server_url}/visit",
             json=payload,
             headers={"Content-Type": "application/json"},
             timeout=600
