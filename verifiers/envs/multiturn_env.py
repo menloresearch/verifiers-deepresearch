@@ -85,17 +85,18 @@ class MultiTurnEnv(Environment):
             # NOTE: this is not fool-proof, since prompt_tokens + max_completion_tokens
             # can exceed vLLM max tokens before making the request
             if response.usage.total_tokens >= self.max_tokens -1:
+                msg = f"[ERROR] max_tokens_reached. {response.usage.total_tokens} tokens."
                 is_completed = True
                 if self.message_type == "chat":
-                    response.choices[0].message.content = "[ERROR] max_tokens_reached"
+                    response.choices[0].message.content = msg
                     response_message: ChatMessage = {
-                    "role": "assistant",
-                    "content": "[ERROR] max_tokens_reached",
-                }
+                        "role": "assistant",
+                        "content": msg,
+                    }
                     completion.append(response_message)
                 else:
-                    response.choices[0].text = "[ERROR] max_tokens_reached"
-                    completion += "[ERROR] max_tokens_reached"
+                    response.choices[0].text = msg
+                    completion += msg
                 state["responses"].append(response)
                 break
             state["responses"].append(response)
