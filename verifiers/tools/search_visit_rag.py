@@ -144,20 +144,20 @@ def _create_preview(text: str, max_sentences: int = 2, max_chars: int = 200) -> 
     """Create a preview from text content."""
     if not text:
         return "No preview available"
-    
+
     # Split into sentences
     sentences = re.split(r'[.!?]+', text)
     sentences = [s.strip() for s in sentences if s.strip()]
-    
-    preview = ""
-    for i, sentence in enumerate(sentences[:max_sentences]):
+
+    preview = sentences[0]
+    for sentence in sentences[1:max_sentences]:
         if len(preview + sentence) > max_chars:
             break
         preview += sentence + ". "
-    
+
     if len(preview) > max_chars:
         preview = preview[:max_chars].rsplit(' ', 1)[0] + "..."
-    
+
     return preview.strip()
 
 
