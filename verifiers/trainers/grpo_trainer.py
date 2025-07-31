@@ -1419,6 +1419,9 @@ class GRPOTrainer(Trainer):
             metrics = {f"eval_{key}": val for key, val in metrics.items()}
 
         logs = {**logs, **metrics}
+        if mode == "train":
+            logs["avg_generation_time"] = self.async_generator.get_average_generation_time()
+
         if start_time is not None:
             super().log(logs, start_time)
         else:
@@ -1453,9 +1456,6 @@ class GRPOTrainer(Trainer):
                     if self.wandb_log_unique_prompts:
                         df = df.drop_duplicates(subset=["prompt"])
                     wandb.log({"completions": wandb.Table(dataframe=df)})
-
-                avg_generation_time = self.async_generator.get_average_generation_time()
-                wandb.log(dict(avg_generation_time=avg_generation_time), step=self.state.global_step)
 
             # Clear the textual logs after logging
             self._textual_logs["prompt"].clear()
