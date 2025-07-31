@@ -310,7 +310,8 @@ class ToolRubric(Rubric):
                 if content.count("<answer>") != content.count("</answer>") and (content.count("<answer>") > 0 or content.count("</answer>") > 0):
                     # total_reward -= 2*abs(content.count("<answer>") - content.count("</answer>") )
                     return 0.
-
+                if (find_num_tags(content, "tool_call") + find_num_tags(content, "answer") == 0):
+                    return 0.
                 if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "answer") > 0:
                     return 0.  # total_reward -= 2
                 if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "tool_response") > 0:
