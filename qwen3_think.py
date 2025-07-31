@@ -162,7 +162,7 @@ def parse_args():
         help="Number of generations per prompt",
     )
     parser.add_argument(
-        "--num_iterations", type=int, default=3, help="Number of PPO iterations"
+        "--num_iterations", type=int, default=1, help="Number of PPO iterations"
     )
     parser.add_argument(
         "--beta", type=float, default=0.01, help="KL penalty coefficient"
