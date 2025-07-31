@@ -1454,6 +1454,9 @@ class GRPOTrainer(Trainer):
                         df = df.drop_duplicates(subset=["prompt"])
                     wandb.log({"completions": wandb.Table(dataframe=df)})
 
+                avg_generation_time = self.async_generator.get_average_generation_time()
+                wandb.log(dict(avg_generation_time=avg_generation_time), step=self.state.global_step)
+
             # Clear the textual logs after logging
             self._textual_logs["prompt"].clear()
             self._textual_logs["completion"].clear()
