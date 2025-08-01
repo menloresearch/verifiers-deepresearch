@@ -44,6 +44,48 @@ When handling user queries:
 
 5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
+## Example query and response flow:
+User: "When was McDonald's founded and who was its founder?"
+
+<think>
+This question has two parts:
+1. The founding date of McDonald's
+2. The founder(s) of McDonald's
+I'll search for this information first, then visit specific pages if needed.
+</think>
+
+<tool_call>
+{{"name": "web_search", "args": {{"query": "McDonald's founding date founder history"}}}}
+</tool_call>
+
+<tool_response>
+Result 1:
+Title: McDonald's Corporation History
+URL: doc_1
+Preview: McDonald's was founded in 1940 by Richard and Maurice McDonald in San Bernardino, California...
+
+Result 2:
+Title: Ray Kroc and McDonald's Expansion
+URL: doc_2
+Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
+</tool_response>
+
+<tool_call>
+{{"name": "visit_tool", "args": {{"url": "doc_1"}}}}
+</tool_call>
+
+<tool_response>
+Title: McDonald's Corporation History
+URL: doc_1
+
+Full Content:
+McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
+</tool_response>
+
+<answer>
+McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
+</answer>
+
 {tool_descriptions}
 """
 
