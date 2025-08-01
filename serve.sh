@@ -1,17 +1,21 @@
 export NCCL_P2P_DISABLE=1
-export VLLM_ALLOW_INSECURE_SERIALIZATION=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-export HF_HUB_ENABLE_HF_TRANSFER=1
-export VLLM_USE_V1=1
 export NCCL_DEBUG=INFO
 export NCCL_SHM_DISABLE=0 
 export NCCL_CUMEM_HOST_ENABLE=0
 export NCCL_CUMEM_ENABLE=0
 export NCCL_IGNORE_DISABLED_P2P=1
+
+export VLLM_USE_V1=1
+export VLLM_ALLOW_INSECURE_SERIALIZATION=1
+
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
+export CUDA_VISIBLE_DEVICES=0,1
+
 python verifiers/inference/vllm_server.py \
-    --model '/mnt/nas/alex/models/Qwen/Qwen3-1.7B' \
+    --model 'Qwen/Qwen3-4B' \
     --tensor-parallel-size 1 \
-    --data-parallel-size 4 \
+    --data-parallel-size 2 \
     --max-model-len 40960 \
     --dtype bfloat16 \
     --gpu-memory-utilization 0.9 \

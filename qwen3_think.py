@@ -1,13 +1,14 @@
 import argparse
-import logging
 import os
 
 import jinja2
-
 import verifiers as vf
+import dotenv
 from verifiers.tools.search_visit_rag import visit_tool, web_search
 from verifiers.utils.data_utils import load_example_dataset
 from verifiers.utils.tool_utils import convert_func_to_oai_tool
+
+dotenv.load_dotenv(override=True)
 
 QWEN3_TOOLS_TEMPLATE = jinja2.Template(
     r"""
