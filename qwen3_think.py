@@ -1,6 +1,8 @@
 import argparse
 import os
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import jinja2
 import verifiers as vf
 import dotenv
@@ -196,6 +198,7 @@ def parse_args():
         "--max_prompt_length", type=int, default=2048, help="Maximum prompt length"
     )
     parser.add_argument("--max_tokens", type=int, default=4096, help="Maximum tokens")
+    parser.add_argument("--optim", default="adamw_torch_fused")  # see transformers.training_args.OptimizerNames
 
     # Generation and RL settings
     parser.add_argument(
