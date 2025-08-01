@@ -372,7 +372,8 @@ class ToolRubric(Rubric):
                 parsed = self.parser.parse(msg['content'])
                 if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                     # Found a properly formatted tool message
-                    if i + 1 < len(completion) and completion[i + 1]['role'] == 'tool':
+                    # OldToolEnv uses role="user", ToolEnv uses role="tool"
+                    if i + 1 < len(completion) and completion[i + 1]['role'] in ('tool', 'user'):
                         tool_attempts += 1
                         # Check response with env_parser
                         parsed_response = self.env_parser.parse(
