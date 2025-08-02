@@ -2,12 +2,84 @@ import json
 import re
 import os
 import string
+import numpy as np
 from typing import Callable, Dict, List
 from scipy.stats import skewnorm
 from verifiers.parsers.parser import Parser
 from verifiers.parsers.xml_parser import XMLParser
 from verifiers.rubrics.rubric import Rubric
+from verifiers.rubrics.utils.correctness_reward_utils import process_row
 
+
+def find_fuzzy_substring(term: str, sentence: str, n: int = 1) -> tuple[bool, int, int]:
+    """
+    Checks if a term exists in a sentence allowing for up to n different characters.
+
+    This function uses a dynamic programming approach based on the Levenshtein
+    distance to find the best match of a 'term' within a 'sentence'.
+
+    Args:
+        term: The substring to search for.
+        sentence: The text to search within.
+        n: The maximum number of allowed differences (edits: insert, delete, substitute).
+
+    Returns:
+        A tuple containing:
+        - bool: True if a match with at most n differences is found, False otherwise.
+        - int: The minimum number of differences found for the best match.
+        - int: The end position of the best match in the sentence. Returns -1 if no match.
+    """
+    # Get lengths of the term and sentence
+    p = len(term)
+    m = len(sentence)
+
+    # --- 1. Create and Initialize the DP Table ---
+    # Create a DP table (matrix) of size (p+1) x (m+1)
+    # np.zeros is used for efficient initialization.
+    dp = np.zeros((p + 1, m + 1), dtype=int)
+
+    # Initialize the first column. This represents the cost of deleting
+    # characters from the 'term' to match an empty string.
+    for i in range(p + 1):
+        dp[i, 0] = i
+
+    # The first row is already initialized to zeros by np.zeros.
+    # This is the key modification for substring search: an empty term
+    # can match any prefix of the sentence with zero cost, allowing a
+    # match to start anywhere.
+
+    # --- 2. Fill the DP Table ---
+    for i in range(1, p + 1):
+        for j in range(1, m + 1):
+            # If characters are the same, the cost is 0, otherwise it's 1.
+            cost = 0 if term[i - 1] == sentence[j - 1] else 1
+
+            # Calculate the cost for each operation
+            insertion_cost = dp[i, j - 1] + 1
+            deletion_cost = dp[i - 1, j] + 1
+            substitution_cost = dp[i - 1, j - 1] + cost
+
+            # The value of dp[i, j] is the minimum of these three costs
+            dp[i, j] = min(insertion_cost, deletion_cost, substitution_cost)
+
+    # --- 3. Find the Result in the Last Row ---
+    # The last row of the DP table (dp[p]) contains the edit distances for
+    # matching the entire 'term' against all substrings of the 'sentence'.
+    min_diff = np.min(dp[p, :])
+    
+    # Find the position of the first occurrence of the minimum difference
+    # We add 1 to j because argmin returns a 0-based index
+    end_pos = -1
+    if min_diff <= n:
+        # np.argmin gives the first index of the minimum value
+        end_pos = np.argmin(dp[p, :])
+
+
+    # --- 4. Return the Final Result ---
+    # Check if the minimum difference found is within the allowed threshold 'n'.
+    is_match_found = min_diff <= n
+
+    return is_match_found
 
 def calculate_skewed_penalty(x, center=70, skewness=5, scale=200):
     """
@@ -55,16 +127,28 @@ def em_check(prediction, golden_answers):
             break
     return score
 
+def llm_check(query, prediction, golden_answers):
+    if isinstance(golden_answers, str):
+        golden_answers = [golden_answers]
+    score = 0.
+    data = {"query": query, "gold_answer":"", "answer":prediction}
+    for golden_answer in golden_answers:
+        data["gold_answer"] = golden_answer
+        res = process_row(data)
+        if res["grade_description"] == "CORRECT":
+            score = 1.0
+            return score
+    return score
 
 def subem_check(prediction, golden_answers):
     if isinstance(golden_answers, str):
         golden_answers = [golden_answers]
     normalized_prediction = normalize_answer(prediction)
-    score = 0
+    score = 0.
     for golden_answer in golden_answers:
         golden_answer = normalize_answer(golden_answer)
         if golden_answer in normalized_prediction:
-            score = 1
+            score = 1.0
             break
     return score
 
@@ -209,7 +293,7 @@ class ToolRubric(Rubric):
 
         return passed / total_cases if total_cases else 0.0
 
-    def correct_answer_reward_func(self, completion, answer, task, **kwargs) -> float:
+    def correct_answer_reward_func(self,prompt, completion, answer, task, **kwargs) -> float:
         """Reward function that checks if the final answer matches the expected answer."""
         if self.think_mode:
             check_xml = self.num_xml_reward_func(completion=completion)
@@ -225,7 +309,7 @@ class ToolRubric(Rubric):
             response = str(self.parser.parse_answer(completion))
             reward = self.evaluate_code(response, answer, **kwargs)
         elif task == "qa":
-            reward = self.qa_reward_func(
+            reward = self.qa_reward_func(prompt,
                 completion, answer, task, **kwargs)  # * check_xml
         else:
             reward = 0.0
@@ -320,13 +404,18 @@ class ToolRubric(Rubric):
             total_reward += num_answer*(num_think + num_tool)/num_turn
         return total_reward
 
-    def qa_reward_func(self, completion, answer, task, **kwargs) -> float | None:
+    def qa_reward_func(self,prompt, completion, answer, task, **kwargs) -> float | None:
         """
         Reward function that checks if the QA answer matches the expected answer.
         Uses text normalization and either exact matching or substring matching.
         """
-        match_mode = "substring"
-
+        match_mode = "llm"
+        query = ""
+        for obj in prompt:
+            if obj["role"] == "user":
+                query = obj["content"]
+        if query == "":
+            raise ("error")
         if task == "qa":
             response = str(self.parser.parse_answer(completion))
 
@@ -339,12 +428,16 @@ class ToolRubric(Rubric):
                     answers = [str(answers)]
             except json.JSONDecodeError:
                 answers = [answer]
-
             # Get matching mode - default to exact match
             # match_mode = kwargs.get("qa_match_mode", "exact")
             if match_mode == "substring":
-                reward = 1.0 if any(subem_check(response, ans)
-                                    for ans in answers) else 0.0
+                reward = max(subem_check(response, ans)
+                                    for ans in answers) 
+            elif match_mode == "llm":
+                reward = max(llm_check(query, response, ans)
+                                    for ans in answers)   
+                
+            
             else:
                 reward = 1.0 if any(em_check(response, ans)
                                     for ans in answers) else 0.0
@@ -372,8 +465,7 @@ class ToolRubric(Rubric):
                 parsed = self.parser.parse(msg['content'])
                 if hasattr(parsed, 'tool_call') and parsed.tool_call is not None:
                     # Found a properly formatted tool message
-                    # OldToolEnv uses role="user", ToolEnv uses role="tool"
-                    if i + 1 < len(completion) and completion[i + 1]['role'] in ('tool', 'user'):
+                    if i + 1 < len(completion) and completion[i + 1]['role'] == 'user':
                         tool_attempts += 1
                         # Check response with env_parser
                         parsed_response = self.env_parser.parse(
@@ -390,11 +482,12 @@ class ToolRubric(Rubric):
         # Calculate reward
         if tool_attempts == 0 or num_search == 0:
             return -0.5
-        x = num_visit/num_search
-        if x < 1:
-            return -0.5
-        else:
-            return ((x-1)/4)**0.25
+        return num_visit/num_search
+        # x = num_visit/num_search
+        # if x < 1:
+        #     return -0.5
+        # else:
+        #     return ((x-1)/4)**0.25
         
     def tool_execution_reward_func(self, completion: List[Dict[str, str]], **kwargs) -> float:
         """
