@@ -140,8 +140,9 @@ class ToolEnv(MultiTurnEnv):
         estimated_toks = sum(len(msg["content"]) for msg in messages) / 4
 
         # NOTE: if we return here, the last message is not guaranteed to contain the answer
-        if estimated_toks > self.max_tokens:
-            logger.info(f"Estimated tokens ({estimated_toks}) exceeds max_tokens ({self.max_tokens})")
+        # NOTE: compare against max_tokens * 2 so we are not too strict about terminating the request
+        if estimated_toks > self.max_tokens * 2:
+            logger.info(f"Estimated tokens ({estimated_toks}) exceeds max_tokens x2 ({self.max_tokens * 2})")
             logger.info(messages)
             return True
 
