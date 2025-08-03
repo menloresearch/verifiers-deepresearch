@@ -328,6 +328,7 @@ class ToolRubric(Rubric):
         match_mode = "substring"
 
         if task == "qa":
+            # .parse_answer() may return None
             response = str(self.parser.parse_answer(completion))
 
             # Try to parse the answer as a list of possible answers
