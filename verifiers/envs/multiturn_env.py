@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def log_random(msg):
-    if random.random() < 0.1:  # log 10%
+    if random.random() < 0.01:  # log 1%
         logger.info(msg)
 
 
