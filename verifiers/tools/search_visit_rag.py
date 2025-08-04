@@ -12,12 +12,12 @@ def web_search(query: str) -> str:
         Formatted string with search results including URLs and previews
     """
     server_url = os.environ.get("RAG_SERVER_URL", "http://localhost:2223") 
-    num_results = 10
+    num_results = int(os.environ.get("RAG_SEARCH_TOPK", 10))
     
     try:
         payload = {
             "queries": [query],
-            "topk_retrieval": max(num_results * 3, 15),
+            "topk_retrieval": num_results * 3,
             "topk_rerank": num_results,
             "return_scores": False
         }
