@@ -724,7 +724,7 @@ class GRPOTrainer(Trainer):
             attention_mask_batch = attention_mask[i : i + batch_size]
             logits = model(
                 input_ids=input_ids_batch,
-                attention_mask=attention_mask_batch,
+                # attention_mask=attention_mask_batch,  # passing attention mask seems wrong...
                 logits_to_keep=logits_to_keep + 1,
             ).logits
             logits = logits[
@@ -1196,6 +1196,7 @@ class GRPOTrainer(Trainer):
         advantages = inputs["advantages"]
         # When using num_iterations == 1, old_per_token_logps == per_token_logps,
         # so we can skip it's computation (see _generate_and_score_completions) and use per_token_logps.detach() instead.
+        # in verifiers, there is no _generate_and_score_completions(). hence, coef_1 is always 1.0
         old_per_token_logps = (
             per_token_logps.detach()
             if inputs["old_per_token_logps"] is None
