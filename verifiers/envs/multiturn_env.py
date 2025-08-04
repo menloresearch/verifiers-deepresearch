@@ -2,6 +2,7 @@ from abc import abstractmethod
 from copy import deepcopy
 from typing import Tuple
 import logging
+import random
 
 from openai import AsyncOpenAI
 from transformers import AutoTokenizer
@@ -19,6 +20,11 @@ from verifiers.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def log_random(msg):
+    if random.random() < 0.1:  # log 10%
+        logger.info(msg)
 
 
 class MultiTurnEnv(Environment):
@@ -144,29 +150,37 @@ class MultiTurnEnv(Environment):
                 or state["turn"] >= self.max_turns
             ):
                 is_completed = True
+            elif response.usage.total_tokens >= self.max_tokens:
+                msg = (
+                    f"Stop rollout because current tokens ({response.usage.total_tokens}) "
+                    f"exceeds max_tokens ({self.max_tokens})"
+                )
+                logger.info(msg)
+                log_random(rollout)
+                is_completed = True
             else:
                 env_msgs, state = self.env_response(rollout, state, **kwargs)
+
+                # env response might be long, especially when there are parallel tool calls.
+                # we will stop rollout in that case.
+                if self.tokenizer is not None:
+                    num_new_tokens = len(self.tokenizer.apply_chat_template(env_msgs))
+                    if response.usage.total_tokens + num_new_tokens >= self.max_tokens:
+                        msg = (
+                            f"Stop rollout because current tokens ({response.usage.total_tokens}) "
+                            f"+ environment tokens ({num_new_tokens})"
+                            f"exceeds max_tokens ({self.max_tokens})"
+                        )
+                        logger.info(msg)
+                        log_random(rollout)
+                        is_completed = True
+
                 if self.message_type == "chat":
                     assert isinstance(env_msgs, list)
                     assert isinstance(rollout, list)
                     assert isinstance(completion, list)
                     rollout += env_msgs
                     completion += env_msgs
-
-                    # env response might be long, especially when there are parallel tool calls.
-                    # we will stop rollout in that case.
-                    if self.tokenizer is not None:
-                        num_new_tokens = len(self.tokenizer.apply_chat_template(env_msgs))
-                        if response.usage.total_tokens + num_new_tokens >= self.max_tokens:
-                            msg = (
-                                f"Stop rollout because current tokens ({response.usage.total_tokens}) "
-                                f"+ environment tokens ({num_new_tokens})"
-                                f"exceeds max_tokens ({self.max_tokens})"
-                            )
-                            logger.info(msg)
-                            logger.info(rollout)
-                            is_completed = True
-
                 else:
                     assert isinstance(env_msgs, str)
                     assert isinstance(rollout, str)
