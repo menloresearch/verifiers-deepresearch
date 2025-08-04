@@ -327,6 +327,9 @@ class ToolRubric(Rubric):
         """
         match_mode = "substring"
 
+        # kwargs - 'parser', 'prompt', 'state', 'info', 'apply_weights'
+        # kwargs["prompt"] contains system prompt and 1st user query
+
         if task == "qa":
             # .parse_answer() may return None
             response = str(self.parser.parse_answer(completion))
@@ -340,6 +343,12 @@ class ToolRubric(Rubric):
                     answers = [str(answers)]
             except json.JSONDecodeError:
                 answers = [answer]
+
+            # "When" question - add year as a potential answer
+            if kwargs["prompt"][-1]["content"].lower().startswith("when "):
+                year = answer[-4:].strip()  # year can be 3 or 4 digit
+                if year.isnumeric() and year not in answers:
+                    answers.append(year)
 
             # Get matching mode - default to exact match
             # match_mode = kwargs.get("qa_match_mode", "exact")
