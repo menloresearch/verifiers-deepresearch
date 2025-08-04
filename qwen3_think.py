@@ -1,5 +1,6 @@
 import argparse
 import os
+from pathlib import Path
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -276,6 +277,10 @@ def main():
 
     # Set output dir based on run name if not specified
     output_dir = args.output_dir if args.output_dir else f"outputs/{args.run_name}"
+
+    # check if output_dir is not empty
+    if Path(output_dir).exists():
+        assert len(list(Path(output_dir).iterdir())) == 0
 
     training_args = vf.grpo_defaults(run_name=args.run_name)
 
