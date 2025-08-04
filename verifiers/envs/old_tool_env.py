@@ -136,16 +136,6 @@ class ToolEnv(MultiTurnEnv):
     def is_completed(
         self, messages: List[Dict[str, str]], state: Dict[str, Any], **kwargs: Any
     ) -> bool:
-        assert all(isinstance(msg["content"], str) for msg in messages)
-        estimated_toks = sum(len(msg["content"]) for msg in messages) / 4
-
-        # NOTE: if we return here, the last message is not guaranteed to contain the answer
-        # NOTE: compare against max_tokens * 2 so we are not too strict about terminating the request
-        if estimated_toks > self.max_tokens * 2:
-            logger.info(f"Estimated tokens ({estimated_toks}) exceeds max_tokens x2 ({self.max_tokens * 2})")
-            logger.info(messages)
-            return True
-
         return self.parser.parse_answer(messages) is not None
 
     def call_tool(self, tool_json: str, max_chars: int = 8192, **kwargs) -> str:

@@ -262,6 +262,7 @@ def main():
         format_prompt=False,
         max_turns=args.max_steps_env,
         max_tokens=args.max_tokens,
+        tokenizer_id=args.model_name,
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer,
