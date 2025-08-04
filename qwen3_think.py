@@ -156,7 +156,12 @@ def parse_args():
         "--max_prompt_length", type=int, default=2048, help="Maximum prompt length"
     )
     parser.add_argument("--max_tokens", type=int, default=4096, help="Maximum tokens")
-    parser.add_argument("--optim", default="adamw_torch_fused")  # see transformers.training_args.OptimizerNames
+    parser.add_argument(
+        "--max_seq_len", type=int, default=4096
+    )  # will truncate if total tokens exceed this
+    parser.add_argument(
+        "--optim", default="adamw_torch_fused"
+    )  # see transformers.training_args.OptimizerNames
 
     # Generation and RL settings
     parser.add_argument(
@@ -184,33 +189,15 @@ def parse_args():
         help="High threshold for advantage estimation",
     )
     parser.add_argument(
-        "--mask_truncated_completions",
-        action="store_true",
-        default=True,
-        help="Mask truncated completions",
-    )
-    parser.add_argument(
         "--loss_type", type=str, default="dr_grpo", help="Type of loss function"
     )
 
     # vLLM server settings
     parser.add_argument(
-        "--use_vllm",
-        action="store_true",
-        default=True,
-        help="Whether to use vLLM server",
-    )
-    parser.add_argument(
         "--vllm_server_host", type=str, default="0.0.0.0", help="vLLM server host"
     )
     parser.add_argument(
         "--vllm_server_port", type=int, default=8000, help="vLLM server port"
-    )
-    parser.add_argument(
-        "--vllm_gpu_memory_utilization",
-        type=float,
-        default=0.9,
-        help="GPU memory utilization for vLLM",
     )
     parser.add_argument(
         "--async_generation_timeout",
@@ -235,25 +222,7 @@ def parse_args():
         "--save_steps", type=int, default=100, help="Number of steps between saves"
     )
     parser.add_argument(
-        "--save_only_model",
-        action="store_true",
-        default=True,
-        help="Save only model weights",
-    )
-    parser.add_argument(
         "--logging_steps", type=int, default=1, help="Number of steps between logging"
-    )
-    parser.add_argument(
-        "--log_on_each_node",
-        action="store_true",
-        default=False,
-        help="Log on each node in distributed training",
-    )
-    parser.add_argument(
-        "--log_completions",
-        action="store_true",
-        default=True,
-        help="Log completions during training",
     )
     parser.add_argument(
         "--report_to", type=str, default="wandb", help="Where to report metrics"
@@ -265,17 +234,6 @@ def parse_args():
     )
     parser.add_argument(
         "--hub_model_id", type=str, default=None, help="Hugging Face Hub model ID"
-    )
-    parser.add_argument(
-        "--hub_private_repo",
-        type=str,
-        default=True,
-        help="Hugging Face Hub private repo",
-    )
-
-    # Precision
-    parser.add_argument(
-        "--bf16", action="store_true", default=True, help="Use bfloat16 precision"
     )
 
     return parser.parse_args()
@@ -325,13 +283,17 @@ def main():
     for arg_name, arg_value in vars(args).items():
         if hasattr(training_args, arg_name):
             setattr(training_args, arg_name, arg_value)
+
     training_args.output_dir = output_dir
+
     # Set hub model ID if not specified
     if args.push_to_hub and not training_args.hub_model_id:
         training_args.hub_model_id = args.run_name
     if args.lr_scheduler_type == "warmup_stable_decay":
         print("Using warmup_stable_decay")
         setattr(training_args, "lr_scheduler_kwargs", {"num_decay_steps": 128})
+
+    print(training_args)
 
     trainer = vf.GRPOTrainer(
         model=model,
