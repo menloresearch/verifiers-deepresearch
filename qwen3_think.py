@@ -156,7 +156,7 @@ def parse_args():
     parser.add_argument(
         "--max_prompt_length", type=int, default=2048, help="Maximum prompt length"
     )
-    parser.add_argument("--max_tokens", type=int, default=4096, help="Maximum tokens")
+    parser.add_argument("--max_tokens", type=int, default=4096, help="Maximum tokens per vLLM response")
     parser.add_argument(
         "--max_seq_len", type=int, default=4096
     )  # will truncate if total tokens exceed this
@@ -261,8 +261,7 @@ def main():
         tools=tools,
         format_prompt=False,
         max_turns=args.max_steps_env,
-        max_tokens=args.max_tokens,
-        tokenizer_id=args.model_name,
+        max_seq_len=args.max_seq_len,
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer,

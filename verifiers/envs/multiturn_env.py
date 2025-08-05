@@ -4,8 +4,8 @@ from typing import Tuple
 import logging
 import random
 
+import openai
 from openai import AsyncOpenAI
-from transformers import AutoTokenizer
 
 from verifiers.envs.environment import Environment
 from verifiers.types import (
@@ -32,20 +32,13 @@ class MultiTurnEnv(Environment):
         self,
         message_type: MessageType = "chat",
         max_turns: int = 10,
-        max_tokens = 4096,
-        tokenizer_id: str | None = None,
+        max_seq_len: int = 4096,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.max_turns = max_turns
         self.message_type = message_type
-        self.max_tokens = max_tokens
-
-        if tokenizer_id is not None:
-            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
-            logger.info(f"Initializing {tokenizer_id} tokenizer for Environment")
-        else:
-            self.tokenizer = None
+        self.max_seq_len = max_seq_len
 
     @abstractmethod
     def is_completed(self, messages: Messages, state: State, **kwargs) -> bool:
@@ -95,32 +88,28 @@ class MultiTurnEnv(Environment):
             if self.is_completed(rollout, state, **kwargs):
                 is_completed = True
                 break
-            response = await self.get_model_response(
-                client=client,
-                model=model,
-                prompt=rollout,
-                oai_tools=info.get("oai_tools", None),
-                sampling_args=sampling_args,
-                message_type=self.message_type,
-            )
-            # NOTE: this is not fool-proof, since prompt_tokens + max_completion_tokens
-            # can exceed vLLM max tokens before making the request
-            # this is only used to signal to reward function
-            # if response.usage.total_tokens >= self.max_tokens -1:
-            #     msg = f"[ERROR] max_tokens_reached. {response.usage.total_tokens} tokens."
-            #     is_completed = True
+            try:
+                response = await self.get_model_response(
+                    client=client,
+                    model=model,
+                    prompt=rollout,
+                    oai_tools=info.get("oai_tools", None),
+                    sampling_args=sampling_args,
+                    message_type=self.message_type,
+                )
+            except openai.BadRequestError as e:
+                # this happens when tokens in messages + max_tokens > max-model-len in vLLM
+                if "Please reduce the length of the messages or completion" in e.message:
+                    logger.info("Stopped rollout due to max tokens exceeded")
+                    is_completed = True
+                    break
+                # don't handle other errors
+                raise
+            # if response.usage.total_tokens >= self.max_seq_len:
             #     if self.message_type == "chat":
-            #         response.choices[0].message.content = msg
-            #         response_message: ChatMessage = {
-            #             "role": "assistant",
-            #             "content": msg,
-            #         }
-            #         completion.append(response_message)
+            #         response.choices[0].message.content = "[ERROR] max_tokens_reached"
             #     else:
-            #         response.choices[0].text = msg
-            #         completion += msg
-            #     state["responses"].append(response)
-            #     break
+            #         response.choices[0].text = "[ERROR] max_tokens_reached"
             state["responses"].append(response)
             if self.message_type == "chat":
                 assert isinstance(rollout, list)
@@ -150,31 +139,16 @@ class MultiTurnEnv(Environment):
                 or state["turn"] >= self.max_turns
             ):
                 is_completed = True
-            elif response.usage.total_tokens >= self.max_tokens:
+            elif response.usage.total_tokens >= self.max_seq_len:
                 msg = (
-                    f"Stop rollout because current tokens ({response.usage.total_tokens}) "
-                    f"exceeds max_tokens ({self.max_tokens})"
+                    f"Stopped rollout because current tokens ({response.usage.total_tokens}) "
+                    f"exceeds max_seq_len ({self.max_seq_len})"
                 )
                 logger.info(msg)
                 log_random(rollout)
                 is_completed = True
             else:
                 env_msgs, state = self.env_response(rollout, state, **kwargs)
-
-                # env response might be long, especially when there are parallel tool calls.
-                # we will stop rollout in that case.
-                if self.tokenizer is not None:
-                    num_new_tokens = len(self.tokenizer.apply_chat_template(env_msgs))
-                    if response.usage.total_tokens + num_new_tokens >= self.max_tokens:
-                        msg = (
-                            f"Stop rollout because current tokens ({response.usage.total_tokens}) "
-                            f"+ environment tokens ({num_new_tokens})"
-                            f"exceeds max_tokens ({self.max_tokens})"
-                        )
-                        logger.info(msg)
-                        log_random(rollout)
-                        is_completed = True
-
                 if self.message_type == "chat":
                     assert isinstance(env_msgs, list)
                     assert isinstance(rollout, list)
@@ -187,5 +161,4 @@ class MultiTurnEnv(Environment):
                     assert isinstance(completion, str)
                     rollout += env_msgs
                     completion += env_msgs
-
         return completion, state
