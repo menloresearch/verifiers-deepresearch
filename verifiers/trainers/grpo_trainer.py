@@ -1081,6 +1081,7 @@ class GRPOTrainer(Trainer):
             # Now create tensors only for this process's slice
             input_ids_list = []
             attention_mask_list = []
+            attention_mask_for_forward_list = []
 
             for i in range(process_slice.start, process_slice.stop):
                 input_ids_list.append(
@@ -1098,17 +1099,24 @@ class GRPOTrainer(Trainer):
                     )
                 )
 
+                attention_mask_for_forward_list.append(
+                    torch.ones_like(input_ids_list[-1],
+                        device=self.accelerator.device,
+                    )
+                )
+
             input_ids = pad(
                 input_ids_list,
                 padding_value=self.processing_class.pad_token_id,
                 padding_side="right",
             )  # type: ignore
             attention_mask = pad(attention_mask_list, padding_side="right")  # type: ignore
-
+            attention_mask_for_forward = pad(attention_mask_for_forward_list, padding_side="right")
             # Truncate if needed
             if self.max_seq_len is not None and input_ids.size(1) > self.max_seq_len:
                 input_ids = input_ids[:, -self.max_seq_len :]
                 attention_mask = attention_mask[:, -self.max_seq_len :]
+                attention_mask_for_forward = attention_mask_for_forward[:,-self.max_seq_len :]
 
             # Take this process's slice of advantages
             advantages = all_advantages[process_slice]
@@ -1140,6 +1148,7 @@ class GRPOTrainer(Trainer):
             full_batch = {
                 "input_ids": input_ids,
                 "attention_mask": attention_mask,
+                "attention_mask_for_forward": attention_mask_for_forward,
                 "old_per_token_logps": None,
                 "advantages": advantages,
             }
@@ -1184,13 +1193,13 @@ class GRPOTrainer(Trainer):
     ) -> torch.Tensor:  # type: ignore
         mode = "train"
         # Compute the per-token log probabilities for the model
-        input_ids, attention_mask = inputs["input_ids"], inputs["attention_mask"]
+        input_ids, attention_mask, attention_mask_for_forward = inputs["input_ids"], inputs["attention_mask"], inputs["attention_mask_for_forward"]
 
         # prompt is at least 1 token
         completion_mask = attention_mask[:, 1:]
         logits_to_keep = completion_mask.size(1)
         per_token_logps = self._get_per_token_logps(
-            model, input_ids, attention_mask, logits_to_keep
+            model, input_ids, attention_mask_for_forward, logits_to_keep
         )
         # Compute the loss
         advantages = inputs["advantages"]
@@ -1221,12 +1230,12 @@ class GRPOTrainer(Trainer):
             with torch.no_grad():
                 if self.ref_model is not None:
                     ref_per_token_logps = self._get_per_token_logps(
-                        self.ref_model, input_ids, attention_mask, logits_to_keep
+                        self.ref_model, input_ids, attention_mask_for_forward, logits_to_keep
                     )
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():  # type: ignore
                         ref_per_token_logps = self._get_per_token_logps(
-                            self.model, input_ids, attention_mask, logits_to_keep
+                            self.model, input_ids, attention_mask_for_forward, logits_to_keep
                         )
             per_token_kl = (
                 torch.exp(ref_per_token_logps - per_token_logps)
