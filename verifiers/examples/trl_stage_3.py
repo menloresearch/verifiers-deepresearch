@@ -168,8 +168,10 @@ def parse_args():
                         help="Maximum gradient norm")
     parser.add_argument("--max_prompt_length", type=int, default=2048,
                         help="Maximum prompt length")
-    parser.add_argument("--max_completion_length", type=int, default=4096,
-                        help="Maximum completion length")
+    parser.add_argument("--max_seq_len", type=int, default=4096,
+                        help="Maximum prompt + completion length")
+    parser.add_argument("--max_tokens", type=int, default=4096,
+                        help="Maximum completion tokens per vLLM request")
 
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
@@ -263,7 +265,8 @@ def main():
         tools=tools,
         format_prompt=False,
         max_turns=args.max_steps_env,
-        max_tokens=args.max_completion_length
+        max_seq_len=args.max_seq_len,
+        tokenizer_id=args.model_name,
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #
@@ -286,6 +289,9 @@ def main():
     if args.lr_scheduler_type == "warmup_stable_decay":
         print("Using warmup_stable_decay")
         setattr(training_args, "lr_scheduler_kwargs", { "num_decay_steps":128})
+
+    print(training_args)
+
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,

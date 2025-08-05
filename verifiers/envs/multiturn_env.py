@@ -32,14 +32,14 @@ class MultiTurnEnv(Environment):
         self,
         message_type: MessageType = "chat",
         max_turns: int = 10,
-        max_tokens = 4096,
+        max_seq_len: int = 4096,
         tokenizer_id: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.max_turns = max_turns
         self.message_type = message_type
-        self.max_tokens = max_tokens
+        self.max_seq_len = max_seq_len
 
         if tokenizer_id is not None:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
@@ -103,7 +103,7 @@ class MultiTurnEnv(Environment):
                 sampling_args=sampling_args,
                 message_type=self.message_type,
             )
-            if response.usage.total_tokens >= self.max_tokens -1:
+            if response.usage.total_tokens >= self.max_seq_len -1:
                 if self.message_type == "chat":
                     response.choices[0].message.content = "[ERROR] max_tokens_reached"
                 else:
@@ -137,10 +137,10 @@ class MultiTurnEnv(Environment):
                 or state["turn"] >= self.max_turns
             ):
                 is_completed = True
-            elif response.usage.total_tokens >= self.max_tokens:
+            elif response.usage.total_tokens >= self.max_seq_len:
                 msg = (
                     f"Stop rollout because current tokens ({response.usage.total_tokens}) "
-                    f"exceeds max_tokens ({self.max_tokens})"
+                    f"exceeds max_seq_len ({self.max_seq_len})"
                 )
                 logger.info(msg)
                 log_random(rollout)
@@ -152,11 +152,11 @@ class MultiTurnEnv(Environment):
                 # we will stop rollout in that case.
                 if self.tokenizer is not None:
                     num_new_tokens = len(self.tokenizer.apply_chat_template(env_msgs))
-                    if response.usage.total_tokens + num_new_tokens >= self.max_tokens:
+                    if response.usage.total_tokens + num_new_tokens >= self.max_seq_len:
                         msg = (
                             f"Stop rollout because current tokens ({response.usage.total_tokens}) "
                             f"+ environment tokens ({num_new_tokens})"
-                            f"exceeds max_tokens ({self.max_tokens})"
+                            f"exceeds max_seq_len ({self.max_seq_len})"
                         )
                         logger.info(msg)
                         log_random(rollout)
