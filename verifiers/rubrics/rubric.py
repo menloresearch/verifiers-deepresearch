@@ -151,14 +151,17 @@ class Rubric:
             func.__name__: reward
             for func, reward in zip(self.get_reward_funcs(), reward_scores)
         }
+        rewards["reward"] = sum(reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights()))
+        return rewards
+
         correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = [reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())]
-        
+
         if num_xml_reward == 0.:
             b = -0.5
             # format_efficiency_reward = -0.5
         else:
             b = tool_execution_reward + format_func + efficient_thinking_reward + num_xml_reward + visit_tool_reward*5
-        
+
         format_efficiency_reward = (correct_answer_reward)*math.log(1.001 + correct_answer_reward*b ) #+  0.5*(num_xml_reward + visit_tool_reward) # sum([reward * weight for reward, weight in zip(reward_scores, self.get_reward_weights())])
         rewards["format_and_efficient_reward"] = format_efficiency_reward
         # correct_answer_reward, tool_execution_reward, format_func, efficient_thinking_reward, num_xml_reward,visit_tool_reward, _ = reward_scores

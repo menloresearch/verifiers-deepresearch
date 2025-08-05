@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -113,24 +114,6 @@ def parse_args():
     parser.add_argument(
         "--wandb_project", type=str, default=None, help="wandb project name"
     )
-    parser.add_argument(
-        "--reward_correct_answer",
-        type=float,
-        default=1.0,
-        help="Reward weight for correct answer",
-    )
-    parser.add_argument(
-        "--reward_tool_execution",
-        type=float,
-        default=0.2,
-        help="Reward weight for tools execution",
-    )
-    parser.add_argument(
-        "--reward_format",
-        type=float,
-        default=0.2,
-        help="Reward weight for format parser",
-    )
 
     # Hardware/performance settings
     parser.add_argument(
@@ -241,6 +224,78 @@ def parse_args():
     return parser.parse_args()
 
 
+def qwen3_format_func(completion: list[dict], answer, task, **kwargs):
+    for msg in completion:
+        if msg["role"] != "assistant":
+            continue
+
+        content = msg["content"].strip()
+
+        # check all openning tags have a corresponding closing tag
+        for tag in ["think", "tool_call"]:
+            num_open_tags = len(re.findall(rf"<{tag}>", content))
+            num_close_tags = len(re.findall(rf"</{tag}>", content))
+            if num_open_tags != num_close_tags:
+                return 0.0
+
+        # there should be at most 1 <think> block
+        # and if there is a <think> block, it should be at the start of the content
+        num_think_blocks = len(re.findall(r"<think>(.*?)</think>", content, re.DOTALL))
+        if (
+            num_think_blocks > 1
+            or (num_think_blocks == 1 and not content.startswith("<think>"))
+        ):
+            return 0.0
+
+        # if there are tool calls, they must appear last,
+        # and there is no content (except whitespace) between them
+        # NOTE: we are not checking <tool_call> content
+        tool_call_blocks = list(re.finditer(r"<tool_call>(.*?)</tool_call>", content, re.DOTALL))
+        if len(tool_call_blocks) == 0:
+            continue
+
+        # check space between tool_call_blocks
+        curr_block = tool_call_blocks[0]
+        for next_block in tool_call_blocks[1:]:
+            start_idx = curr_block.end()
+            end_idx = next_block.start()
+            if content[start_idx : end_idx].strip():
+                return 0.0
+            curr_block = next_block
+
+        # check if last block is at the end
+        if curr_block.end() != len(content):
+            return 0.0
+
+    return 1.0
+
+
+def make_tool_call_count(name: str):
+    def f(completion: list[dict], answer, task, **kwargs):
+        count = 0.0
+
+        for msg in completion:
+            if msg["role"] != "assistant":
+                continue
+
+            tool_calls = re.findall(r"<tool_call>(.*?)</tool_call>", msg["content"], re.DOTALL)
+            for tool_call_str in tool_calls:
+                try:
+                    # NOTE: we are not checking if the content is a valid tool call
+                    tool_call = json.loads(tool_call_str)
+                    if tool_call["name"] == name:
+                        count += 1.0
+                except:
+                    pass
+
+        return count
+
+    # verifiers will only log functions whose names end with _func
+    f.__name__ = f"tool_{name}_count_func"
+
+    return f
+
+
 # Data
 def get_dataset(name: str):
     ds = load_example_dataset(name, split="train")
@@ -283,15 +338,22 @@ def main():
         max_turns=args.max_steps_env,
         max_seq_len=args.max_seq_len,
     )
-    vf_env.rubric.reward_weights = [
-        args.reward_correct_answer,
-        args.reward_tool_execution,
-        args.reward_format,
+    # set reward function dynamically
+    rubric = vf_env.rubric
+    rubric.reward_funcs = [
+        rubric.correct_answer_reward_func,
+        qwen3_format_func,
+        # for logging only
+        make_tool_call_count("web_search"),
+        make_tool_call_count("visit_tool"),
+    ]
+    rubric.reward_weights = [
+        1.0,
         0.2,
-        0.2,
-        0.2,
+        # for logging only
         0.0,
-    ]  #
+        0.0,
+    ]
 
     model, tokenizer = vf.get_model_and_tokenizer(args.model_name)
 
