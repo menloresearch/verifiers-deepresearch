@@ -1,8 +1,11 @@
 from abc import abstractmethod
 from copy import deepcopy
 from typing import Tuple
+import logging
+import random
 
 from openai import AsyncOpenAI
+from transformers import AutoTokenizer
 
 from verifiers.envs.environment import Environment
 from verifiers.types import (
@@ -16,15 +19,33 @@ from verifiers.types import (
     State,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def log_random(msg):
+    if random.random() < 0.01:  # log 1%
+        logger.info(msg)
+
 
 class MultiTurnEnv(Environment):
     def __init__(
-        self, message_type: MessageType = "chat", max_turns: int = 10, max_tokens = 4096, **kwargs
+        self,
+        message_type: MessageType = "chat",
+        max_turns: int = 10,
+        max_tokens = 4096,
+        tokenizer_id: str | None = None,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.max_turns = max_turns
         self.message_type = message_type
         self.max_tokens = max_tokens
+
+        if tokenizer_id is not None:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+            logger.info(f"Initializing {tokenizer_id} tokenizer for Environment")
+        else:
+            self.tokenizer = None
 
     @abstractmethod
     def is_completed(self, messages: Messages, state: State, **kwargs) -> bool:
@@ -82,20 +103,11 @@ class MultiTurnEnv(Environment):
                 sampling_args=sampling_args,
                 message_type=self.message_type,
             )
-            if response.usage.completion_tokens >= self.max_tokens -1:
-                is_completed = True
+            if response.usage.total_tokens >= self.max_tokens -1:
                 if self.message_type == "chat":
                     response.choices[0].message.content = "[ERROR] max_tokens_reached"
-                    response_message: ChatMessage = {
-                    "role": "assistant",
-                    "content": "[ERROR] max_tokens_reached",
-                }
-                    completion.append(response_message)
                 else:
                     response.choices[0].text = "[ERROR] max_tokens_reached"
-                    completion += "[ERROR] max_tokens_reached"
-                state["responses"].append(response)
-                break
             state["responses"].append(response)
             if self.message_type == "chat":
                 assert isinstance(rollout, list)
@@ -125,8 +137,31 @@ class MultiTurnEnv(Environment):
                 or state["turn"] >= self.max_turns
             ):
                 is_completed = True
+            elif response.usage.total_tokens >= self.max_tokens:
+                msg = (
+                    f"Stop rollout because current tokens ({response.usage.total_tokens}) "
+                    f"exceeds max_tokens ({self.max_tokens})"
+                )
+                logger.info(msg)
+                log_random(rollout)
+                is_completed = True
             else:
                 env_msgs, state = self.env_response(rollout, state, **kwargs)
+
+                # env response might be long, especially when there are parallel tool calls.
+                # we will stop rollout in that case.
+                if self.tokenizer is not None:
+                    num_new_tokens = len(self.tokenizer.apply_chat_template(env_msgs))
+                    if response.usage.total_tokens + num_new_tokens >= self.max_tokens:
+                        msg = (
+                            f"Stop rollout because current tokens ({response.usage.total_tokens}) "
+                            f"+ environment tokens ({num_new_tokens})"
+                            f"exceeds max_tokens ({self.max_tokens})"
+                        )
+                        logger.info(msg)
+                        log_random(rollout)
+                        is_completed = True
+
                 if self.message_type == "chat":
                     assert isinstance(env_msgs, list)
                     assert isinstance(rollout, list)
@@ -139,4 +174,5 @@ class MultiTurnEnv(Environment):
                     assert isinstance(completion, str)
                     rollout += env_msgs
                     completion += env_msgs
+
         return completion, state
