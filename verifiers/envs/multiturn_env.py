@@ -84,41 +84,27 @@ class MultiTurnEnv(Environment):
             assert isinstance(prompt, str)
             completion = ""
         rollout = deepcopy(prompt)
-        trial_sampling_args = deepcopy(sampling_args)
-        trial_sampling_args["max_tokens"] = 1
         while not is_completed:
             if self.is_completed(rollout, state, **kwargs):
                 is_completed = True
                 break
-            # trial request with max_tokens=1
-            # this will fill vLLM KV-cache, so there is no double computation for prefill
             try:
-                _ = await self.get_model_response(
+                response = await self.get_model_response(
                     client=client,
                     model=model,
                     prompt=rollout,
                     oai_tools=info.get("oai_tools", None),
-                    sampling_args=trial_sampling_args,
+                    sampling_args=sampling_args,
                     message_type=self.message_type,
                 )
             except openai.BadRequestError as e:
-                # this happens when tokens in messages > max-model-len in vLLM
+                # this happens when tokens in messages + max_tokens > max-model-len in vLLM
                 if "Please reduce the length of the messages or completion" in e.message:
-                    logger.info(f"Stopped rollout due to max tokens exceeded. {e.message}")
+                    logger.info("Stopped rollout due to max tokens exceeded")
+                    is_completed = True
                     break
-
                 # don't handle other errors
                 raise
-
-            # actual request
-            response = await self.get_model_response(
-                client=client,
-                model=model,
-                prompt=rollout,
-                oai_tools=info.get("oai_tools", None),
-                sampling_args=sampling_args,
-                message_type=self.message_type,
-            )
             if response.usage.total_tokens >= self.max_seq_len:
                 if self.message_type == "chat":
                     response.choices[0].message.content = "[ERROR] max_tokens_reached"
