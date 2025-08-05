@@ -103,7 +103,7 @@ class MultiTurnEnv(Environment):
                 sampling_args=sampling_args,
                 message_type=self.message_type,
             )
-            if response.usage.total_tokens >= self.max_seq_len -1:
+            if response.usage.total_tokens >= self.max_seq_len:
                 if self.message_type == "chat":
                     response.choices[0].message.content = "[ERROR] max_tokens_reached"
                 else:
