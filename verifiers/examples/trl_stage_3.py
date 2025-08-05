@@ -266,7 +266,6 @@ def main():
         format_prompt=False,
         max_turns=args.max_steps_env,
         max_seq_len=args.max_seq_len,
-        tokenizer_id=args.model_name,
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #
