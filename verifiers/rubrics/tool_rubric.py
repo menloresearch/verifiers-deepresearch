@@ -344,12 +344,6 @@ class ToolRubric(Rubric):
             except json.JSONDecodeError:
                 answers = [answer]
 
-            # "When" question - add year as a potential answer
-            if kwargs["prompt"][-1]["content"].lower().startswith("when "):
-                year = answer[-4:].strip()  # year can be 3 or 4 digit
-                if year.isnumeric() and year not in answers:
-                    answers.append(year)
-
             # Get matching mode - default to exact match
             # match_mode = kwargs.get("qa_match_mode", "exact")
             if match_mode == "substring":

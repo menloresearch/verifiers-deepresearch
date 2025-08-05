@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -241,21 +242,40 @@ def parse_args():
 
 
 # Data
+def get_dataset(name: str):
+    ds = load_example_dataset(name, split="train")
 
+    # remove long answers
+    size_before = len(ds)
+    ds = ds.filter(lambda x: len(x["answer"].split()) <= 3)
+    size_after = len(ds)
+    pct = (size_before - size_after) / size_after * 100
+    print(f"Remove {size_before - size_after} ({pct:.2f}%) samples with long answers")
+
+    # add alternative answers
+    def add_alternative_answer(x: dict):
+        if x["question"].lower().startswith("when "):
+            original_answer = x["answer"]
+            year = original_answer[-4:].strip()  # year can be 3 or 4 digit
+            if year.isnumeric() and year != original_answer:
+                x["answer"] = json.dumps([original_answer, year])
+        return x
+
+    ds = ds.map(add_alternative_answer)
+
+    return ds
 
 def main():
     args = parse_args()
     if args.wandb_project:
         os.environ["WANDB_PROJECT"] = args.wandb_project
 
-    train_dataset = load_example_dataset(name=args.train_dataset, split="train")
-
     tools = [web_search, visit_tool]
     oai_tools = [convert_func_to_oai_tool(tool) for tool in tools]
     TOOL_PROMPT = QWEN3_TOOLS_TEMPLATE.render(tools=oai_tools)
 
     vf_env = vf.OldToolEnv(
-        dataset=train_dataset,
+        dataset=get_dataset(args.train_dataset),
         system_prompt=SYSTEM_PROMPT.format(tool_descriptions=TOOL_PROMPT),
         few_shot=[],
         tools=tools,
