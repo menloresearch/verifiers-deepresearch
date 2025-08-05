@@ -1,7 +1,10 @@
 from abc import abstractmethod
 from copy import deepcopy
 from typing import Tuple
+import logging
+import random
 
+import openai
 from openai import AsyncOpenAI
 
 from verifiers.envs.environment import Environment
@@ -16,15 +19,26 @@ from verifiers.types import (
     State,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def log_random(msg):
+    if random.random() < 0.01:  # log 1%
+        logger.info(msg)
+
 
 class MultiTurnEnv(Environment):
     def __init__(
-        self, message_type: MessageType = "chat", max_turns: int = 10, max_tokens = 4096, **kwargs
+        self,
+        message_type: MessageType = "chat",
+        max_turns: int = 10,
+        max_seq_len: int = 4096,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.max_turns = max_turns
         self.message_type = message_type
-        self.max_tokens = max_tokens
+        self.max_seq_len = max_seq_len
 
     @abstractmethod
     def is_completed(self, messages: Messages, state: State, **kwargs) -> bool:
@@ -74,28 +88,28 @@ class MultiTurnEnv(Environment):
             if self.is_completed(rollout, state, **kwargs):
                 is_completed = True
                 break
-            response = await self.get_model_response(
-                client=client,
-                model=model,
-                prompt=rollout,
-                oai_tools=info.get("oai_tools", None),
-                sampling_args=sampling_args,
-                message_type=self.message_type,
-            )
-            if response.usage.completion_tokens >= self.max_tokens -1:
-                is_completed = True
+            try:
+                response = await self.get_model_response(
+                    client=client,
+                    model=model,
+                    prompt=rollout,
+                    oai_tools=info.get("oai_tools", None),
+                    sampling_args=sampling_args,
+                    message_type=self.message_type,
+                )
+            except openai.BadRequestError as e:
+                # this happens when tokens in messages + max_tokens > max-model-len in vLLM
+                if "Please reduce the length of the messages or completion" in e.message:
+                    logger.info("Stopped rollout due to max tokens exceeded")
+                    is_completed = True
+                    break
+                # don't handle other errors
+                raise
+            if response.usage.total_tokens >= self.max_seq_len:
                 if self.message_type == "chat":
                     response.choices[0].message.content = "[ERROR] max_tokens_reached"
-                    response_message: ChatMessage = {
-                    "role": "assistant",
-                    "content": "[ERROR] max_tokens_reached",
-                }
-                    completion.append(response_message)
                 else:
                     response.choices[0].text = "[ERROR] max_tokens_reached"
-                    completion += "[ERROR] max_tokens_reached"
-                state["responses"].append(response)
-                break
             state["responses"].append(response)
             if self.message_type == "chat":
                 assert isinstance(rollout, list)
@@ -124,6 +138,14 @@ class MultiTurnEnv(Environment):
                 self.is_completed(rollout, state, **kwargs)
                 or state["turn"] >= self.max_turns
             ):
+                is_completed = True
+            elif response.usage.total_tokens >= self.max_seq_len:
+                msg = (
+                    f"Stopped rollout because current tokens ({response.usage.total_tokens}) "
+                    f"exceeds max_seq_len ({self.max_seq_len})"
+                )
+                logger.info(msg)
+                log_random(rollout)
                 is_completed = True
             else:
                 env_msgs, state = self.env_response(rollout, state, **kwargs)
