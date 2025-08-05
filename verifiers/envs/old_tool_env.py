@@ -143,20 +143,21 @@ class ToolEnv(MultiTurnEnv):
         try:
             command = json.loads(tool_json)
             if not isinstance(command, dict):
-                return 'Error: Parse tool '+tool_json + ' failed. Tool command must be a JSON object, e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
+                return 'Error: Parse tool '+tool_json + ' failed. Tool command must be a JSON object, e.g. \'{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\''
 
             tool_name = command.get("name")
             if not tool_name:
-                return 'Error: Tool command must specify \'name\', e.g. \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
+                return 'Error: Tool command must specify \'name\', e.g. \'{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\''
 
             if tool_name not in self.tools:
                 return (
                     f"Error: Unknown tool '{tool_name}. "
-                    + 'Please format your tool call as \'{"name": "tool_name", "args": {"arg1": "value1", "arg2": "value2"}}\''
+                    + 'Please format your tool call as \'{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\''
                 )
 
+            # follow Qwen3 template
             tool_func = self.tools[tool_name]
-            tool_args = command.get("args", {})
+            tool_args = command.get("arguments", {})
             if isinstance(tool_args, str):
                 tool_schema = next(
                     (
@@ -176,7 +177,7 @@ class ToolEnv(MultiTurnEnv):
         except Exception as e:
             return (
                 f"Error: call tool {tool_json} with error: '{str(e)}'. "
-                + 'Please format your tool call as \'{"name": "tool_name", "args": {{"arg1": "value1", "arg2": "value2"}}\''
+                + 'Please format your tool call as \'{"name": "tool_name", "arguments": {{"arg1": "value1", "arg2": "value2"}}\''
             )
 
     def env_response(
