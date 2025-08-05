@@ -1091,9 +1091,7 @@ class GRPOTrainer(Trainer):
                     )
                 )
                 attention_mask_list.append(
-                    torch.tensor(
-                        broadcast_data["prompt_mask"][i]
-                        + broadcast_data["completion_mask"][i],
+                    torch.ones_like(input_ids_list[-1],
                         device=self.accelerator.device,
                     )
                 )
