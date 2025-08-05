@@ -35,12 +35,12 @@ When handling user queries:
 
 2. When you need to search for information, call the "web_search" tool using this exact XML format:
 <tool_call>
-{{"name": "web_search", "args": {{"query": "your search query here"}}}}
+{{"name": "web_search", "arguments": {{"query": "your search query here"}}}}
 </tool_call>
 
 3. If search results show promising URLs/documents but you need more detailed information, use the "visit_tool" tool:
 <tool_call>
-{{"name": "visit_tool", "args": {{"url": "doc_1 or specific URL from search results"}}}}
+{{"name": "visit_tool", "arguments": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
 
 4. Tool response results will appear inside <tool_response>...</tool_response> tags
