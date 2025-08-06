@@ -225,10 +225,9 @@ def parse_args():
 
 
 def qwen3_format_func(completion: list[dict], answer, task, **kwargs):
-    for msg in completion:
-        if msg["role"] != "assistant":
-            continue
+    completion = [msg for msg in completion if msg["role"] == "assistant"]
 
+    for msg in completion:
         content = msg["content"].strip()
 
         # check all openning tags have a corresponding closing tag
@@ -270,14 +269,17 @@ def qwen3_format_func(completion: list[dict], answer, task, **kwargs):
     return 1.0
 
 
+def assistant_word_count_per_msg_func(completion: list[dict], answer, task, **kwargs):
+    completion = [msg for msg in completion if msg["role"] == "assistant"]
+    return sum(len(msg["content"].split()) for msg in completion) / len(completion)
+
+
 def make_tool_call_count(name: str):
     def f(completion: list[dict], answer, task, **kwargs):
+        completion = [msg for msg in completion if msg["role"] == "assistant"]
         count = 0.0
 
         for msg in completion:
-            if msg["role"] != "assistant":
-                continue
-
             tool_calls = re.findall(r"<tool_call>(.*?)</tool_call>", msg["content"], re.DOTALL)
             for tool_call_str in tool_calls:
                 try:
@@ -344,6 +346,7 @@ def main():
         rubric.correct_answer_reward_func,
         qwen3_format_func,
         # for logging only
+        assistant_word_count_per_msg_func,
         make_tool_call_count("web_search"),
         make_tool_call_count("visit_tool"),
     ]
@@ -351,6 +354,7 @@ def main():
         1.0,
         0.2,
         # for logging only
+        0.0,
         0.0,
         0.0,
     ]
@@ -371,6 +375,7 @@ def main():
         if hasattr(training_args, arg_name):
             setattr(training_args, arg_name, arg_value)
 
+    training_args.mask_truncated_completions = False
     training_args.output_dir = output_dir
 
     # Set hub model ID if not specified
