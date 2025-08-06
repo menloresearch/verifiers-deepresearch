@@ -9,6 +9,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import jinja2
 import verifiers as vf
 import dotenv
+import accelerate
 from verifiers.tools.search_visit_rag import visit_tool, web_search
 from verifiers.utils.data_utils import load_example_dataset
 from verifiers.utils.tool_utils import convert_func_to_oai_tool
@@ -26,7 +27,7 @@ QWEN3_TOOLS_TEMPLATE = jinja2.Template(
 """.strip()
 )
 
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT_THINK = """
 Your primary purpose is to help users with tasks that require extensive online research.
 
 When handling user queries:
@@ -48,6 +49,35 @@ When handling user queries:
 4. Tool response results will appear inside <tool_response>...</tool_response> tags
 
 5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+
+{tool_descriptions}
+"""
+
+# no mention of <think> tags. add /no_think
+SYSTEM_PROMPT_NO_THINK = """
+Your primary purpose is to help users with tasks that require extensive online research.
+
+When handling user queries:
+1. Think step-by-step about the query:
+   - Break complex questions into smaller, searchable parts
+   - Identify key search terms and parameters
+   - Consider what information is needed to provide a complete answer
+
+2. When you need to search for information, call the "web_search" tool using this exact XML format:
+<tool_call>
+{{"name": "web_search", "arguments": {{"query": "your search query here"}}}}
+</tool_call>
+
+3. If search results show promising URLs/documents but you need more detailed information, use the "visit_tool" tool:
+<tool_call>
+{{"name": "visit_tool", "arguments": {{"url": "doc_1 or specific URL from search results"}}}}
+</tool_call>
+
+4. Tool response results will appear inside <tool_response>...</tool_response> tags
+
+5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
+
+/no_think
 
 {tool_descriptions}
 """
@@ -221,6 +251,8 @@ def parse_args():
         "--hub_model_id", type=str, default=None, help="Hugging Face Hub model ID"
     )
 
+    parser.add_argument("--disable_think", action="store_true")
+
     return parser.parse_args()
 
 
@@ -331,9 +363,17 @@ def main():
     oai_tools = [convert_func_to_oai_tool(tool) for tool in tools]
     TOOL_PROMPT = QWEN3_TOOLS_TEMPLATE.render(tools=oai_tools)
 
+    if args.disable_think:
+        system_prompt = SYSTEM_PROMPT_NO_THINK.format(tool_descriptions=TOOL_PROMPT)
+    else:
+        system_prompt = SYSTEM_PROMPT_THINK.format(tool_descriptions=TOOL_PROMPT)
+
+    accelerator = accelerate.Accelerator()
+    accelerator.print(system_prompt)
+
     vf_env = vf.OldToolEnv(
         dataset=get_dataset(args.train_dataset),
-        system_prompt=SYSTEM_PROMPT.format(tool_descriptions=TOOL_PROMPT),
+        system_prompt=system_prompt,
         few_shot=[],
         tools=tools,
         format_prompt=False,
@@ -382,10 +422,10 @@ def main():
     if args.push_to_hub and not training_args.hub_model_id:
         training_args.hub_model_id = args.run_name
     if args.lr_scheduler_type == "warmup_stable_decay":
-        print("Using warmup_stable_decay")
+        accelerator.print("Using warmup_stable_decay")
         setattr(training_args, "lr_scheduler_kwargs", {"num_decay_steps": 128})
 
-    print(training_args)
+    accelerator.print(training_args)
 
     trainer = vf.GRPOTrainer(
         model=model,
