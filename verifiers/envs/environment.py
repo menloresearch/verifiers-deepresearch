@@ -790,6 +790,7 @@ Model copies with swapped templates are available here: https://huggingface.co/c
         all_completion_masks = []
         all_completion_logprobs = []
         all_rewards = []
+        all_is_truncated = []
         for i, (prompt, completion, state, reward) in enumerate(
             zip(prompts, completions, states, rewards)
         ):
@@ -843,6 +844,7 @@ Model copies with swapped templates are available here: https://huggingface.co/c
                 all_rewards.append(0)
             else:
                 all_rewards.append(reward)
+            all_is_truncated.append(float(is_truncated))
         return {
             "prompt_ids": all_prompt_ids,
             "prompt_mask": all_prompt_masks,
@@ -850,6 +852,7 @@ Model copies with swapped templates are available here: https://huggingface.co/c
             "completion_mask": all_completion_masks,
             "completion_logprobs": all_completion_logprobs,
             "rewards": all_rewards,
+            "is_truncated": all_is_truncated,
         }
 
     # Evaluation and dataset generation

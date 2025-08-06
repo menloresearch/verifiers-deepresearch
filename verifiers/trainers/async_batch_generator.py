@@ -295,6 +295,9 @@ class AsyncBatchGenerator:
             zero_truncated_completions=request.zero_truncated_completions,
         )
 
+        # log is_truncated
+        all_reward_dict["is_truncated"] = processed_results["is_truncated"]
+
         return BatchResult(
             batch_id=request.batch_id,
             processed_results=processed_results,
