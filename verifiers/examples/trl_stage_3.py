@@ -50,13 +50,13 @@ When handling user queries:
 {{"name": "visit_tool", "arguments": {{"url": "doc_1 or specific URL from search results"}}}}
 </tool_call>
 
-3. Tool results will appear inside <result>...</result> tags
+3. Tool results will appear inside <tool_response>...</tool_response> tags
 
 4. You can call tools multiple times with refined queries if initial results don't contain sufficient information
 
 5. After gathering all necessary information, provide your final answer inside <answer>...</answer> tags
 
-Example query and response flow:
+## Example query and response flow:
 User: "When was McDonald's founded and who was its founder?"
 
 
@@ -65,12 +65,12 @@ This question has two parts:
 2. The founder(s) of McDonald's
 I'll search for this information first, then visit specific pages if needed.
 
-
 <tool_call>
 {{"name": "web_search", "arguments": {{"query": "McDonald's founding date founder history"}}}}
 </tool_call>
 
-<result>
+
+<tool_response>
 Result 1:
 Title: McDonald's Corporation History
 URL: doc_1
@@ -80,19 +80,21 @@ Result 2:
 Title: Ray Kroc and McDonald's Expansion
 URL: doc_2
 Preview: Ray Kroc joined McDonald's in 1955 and transformed it into a global franchise...
-</result>
+</tool_response>
+
 
 <tool_call>
 {{"name": "visit_tool", "arguments": {{"url": "doc_1"}}}}
 </tool_call>
 
-<result>
+
+<tool_response>
 Title: McDonald's Corporation History
 URL: doc_1
 
 Full Content:
 McDonald's was founded on May 15, 1940, in San Bernardino, California by brothers Richard and Maurice McDonald...
-</result>
+</tool_response>
 
 <answer>
 McDonald's was founded on May 15, 1940, in San Bernardino, California. The original McDonald's restaurant was opened by brothers Richard and Maurice McDonald. However, the McDonald's Corporation as we know it today was created by Ray Kroc, who joined the company in 1955 as a franchise agent and later purchased the chain from the McDonald brothers.
@@ -115,6 +117,8 @@ Now Begin! If you solve the task correctly, you will receive a reward of $1,000,
 # /no_think
 
 
+## End of example
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DeepResearch training with configurable parameters")
@@ -128,7 +132,7 @@ def parse_args():
                         help="Output directory path")
     parser.add_argument("--learning_rate", type=float, default=3e-6,
                         help="Learning rate")
-    parser.add_argument("--lr_scheduler_type", type=str, default="warmup_stable_decay",
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
                         choices=["linear", "cosine", "cosine_with_restarts",
                                  "polynomial", "constant", "constant_with_warmup", "warmup_stable_decay"],
                         help="Learning rate scheduler type")
@@ -168,10 +172,12 @@ def parse_args():
                         help="Maximum gradient norm")
     parser.add_argument("--max_prompt_length", type=int, default=2048,
                         help="Maximum prompt length")
-    parser.add_argument("--max_seq_len", type=int, default=4096,
-                        help="Maximum prompt + completion length")
+    parser.add_argument("--max_completion_length", type=int, default=4096,
+                        help="Maximum completion length")
+    parser.add_argument("--max_seq_len", type=int, default=40960,
+                        help="Maximum context length to calculate loss")
     parser.add_argument("--max_tokens", type=int, default=4096,
-                        help="Maximum completion tokens per vLLM request")
+                        help="Maximum generation tokens")
 
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
@@ -188,6 +194,8 @@ def parse_args():
                         help="Mask truncated completions")
     parser.add_argument("--loss_type", type=str, default="dr_grpo",
                         help="Type of loss function")
+    parser.add_argument("--mask_env_responses", action="store_true", default=True,
+                        help="Whether mask env responses")
 
     # vLLM server settings
     parser.add_argument("--use_vllm", action="store_true", default=True,
@@ -265,7 +273,7 @@ def main():
         tools=tools,
         format_prompt=False,
         max_turns=args.max_steps_env,
-        max_seq_len=args.max_seq_len,
+        max_tokens=args.max_tokens
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #
@@ -288,9 +296,6 @@ def main():
     if args.lr_scheduler_type == "warmup_stable_decay":
         print("Using warmup_stable_decay")
         setattr(training_args, "lr_scheduler_kwargs", { "num_decay_steps":128})
-
-    print(training_args)
-
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,

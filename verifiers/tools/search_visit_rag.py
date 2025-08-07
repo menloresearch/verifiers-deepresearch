@@ -1,6 +1,7 @@
 import requests
 import re
 import os
+import json
 
 def web_search(query: str) -> str:
     """Enhanced search function that returns URLs and previews for each result.
@@ -40,6 +41,7 @@ def web_search(query: str) -> str:
         
         # Format results with URLs and previews
         formatted_results = []
+        results = {"results": []}
         for i, doc in enumerate(documents, 1):
             title = doc.get('title', f'Document {i}')
             text = doc.get('text', '').strip()
@@ -51,14 +53,14 @@ def web_search(query: str) -> str:
             # Create preview (first 2-3 sentences)
             preview = _create_preview(text)
             
-            formatted_results.append(
-                f"Result {i}:\n"
-                f"Title: {title}\n"
-                f"URL: {url}\n"
-                f"Preview: {preview}\n"
-            )
+            results["results"].append({
+                "result_index": i,
+                "title": title,
+                "url": url,
+                "preview": preview
+            })
         
-        return "\n".join(formatted_results)
+        return json.dumps(results, indent= 4) 
         
     except requests.exceptions.ConnectionError:
         return "Error: Could not connect to RAG server. Please ensure the server is running."
@@ -93,7 +95,7 @@ def visit_tool(url: str) -> str:
         )
         
         if response.status_code != 200:
-            return f"Error: Could not visit {url}. Server returned status {response.status_code}"
+            return f"Error: Could not visit {url}. Server returned status {response.status_code}, the url might be incorrect."
         
         result = response.json()
         documents = result.get('result', [[]])[0]
@@ -104,8 +106,11 @@ def visit_tool(url: str) -> str:
         doc = documents[0]
         title = doc.get('title', 'Untitled')
         content = doc.get('text', '').strip()
-        
-        return f"Title: {title}\nURL: {url}\n\nFull Content:\n{content}"
+        result = {}
+        result["title"] = title
+        result["url"] = url
+        result["full_content"] = content
+        return json.dumps(result, indent=4) 
         
     except Exception as e:
         return f"Error visiting {url}: {str(e)}"
@@ -137,24 +142,24 @@ def search_and_visit_rag(query: str, num_results: int = 3, visit_threshold: floa
     return search_results + instructions
 
 
-def _create_preview(text: str, max_sentences: int = 2, max_chars: int = 200) -> str:
+def _create_preview(text: str, max_sentences: int = 2, max_chars: int = 120) -> str:
     """Create a preview from text content."""
     if not text:
         return "No preview available"
-
+    
     # Split into sentences
-    sentences = re.split(r'[.!?]+', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    preview = sentences[0]
-    for sentence in sentences[1:max_sentences]:
-        if len(preview + sentence) > max_chars:
-            break
-        preview += sentence + ". "
-
-    if len(preview) > max_chars:
-        preview = preview[:max_chars].rsplit(' ', 1)[0] + "..."
-
+    # sentences = re.split(r'[.!?]+', text)
+    # sentences = [s.strip() for s in sentences if s.strip()]
+    
+    # preview = sentences[0]
+    # for sentence in sentences[1:max_sentences]:
+    #     if len(preview + sentence) > max_chars:
+    #         break
+    #     preview += sentence + ". "
+    
+    # if len(preview) > max_chars:
+    #     preview = preview[:max_chars].rsplit(' ', 1)[0] + "..."
+    preview = text[:max_chars] + "..."
     return preview.strip()
 
 

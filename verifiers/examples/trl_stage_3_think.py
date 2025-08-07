@@ -1,4 +1,5 @@
 import os
+from trl import GRPOConfig
 
 import verifiers as vf
 from verifiers.tools.search_visit_rag import web_search, visit_tool
@@ -111,14 +112,16 @@ Here are the rules you should always follow to solve your task:
 3. If no tool call is needed, just answer the question directly.
 4. Never re-do a tool call that you previously did with the exact same parameters.
 5. For tool use, MARK SURE use XML tag format as shown in the examples above. Do not use any other format.
-6. Remember to use "visit_tool" to get more detailed information after you decided to use "web_search", you can visit many pages at one time.
+6. Always use "visit_tool" to get more detailed information after you decided to use "web_search".
 7. Do not say "further research is required" or offer vague conclusions if a confident answer can potentially be found via "visit_tool".
 8. Always prefer action (searching/visit) over inaction (hedging), and do not give up early if the answer is not immediately available.
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
 # /no_think
 
-# 5. You can call tools multiple times with refined queries if initial results don't contain sufficient information
+
+## End of example
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run DeepResearch training with configurable parameters")
@@ -130,7 +133,7 @@ def parse_args():
                         help="Name for the training run")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory path")
-    parser.add_argument("--learning_rate", type=float, default=1.5e-6,
+    parser.add_argument("--learning_rate", type=float, default=2e-6,
                         help="Learning rate")
     parser.add_argument("--lr_scheduler_type", type=str, default="warmup_stable_decay",
                         choices=["linear", "cosine", "cosine_with_restarts",
@@ -172,15 +175,17 @@ def parse_args():
                         help="Maximum gradient norm")
     parser.add_argument("--max_prompt_length", type=int, default=2048,
                         help="Maximum prompt length")
-    parser.add_argument("--max_seq_len", type=int, default=4096,
-                        help="Maximum prompt + completion length")
+    parser.add_argument("--max_completion_length", type=int, default=4096,
+                        help="Maximum completion length")
+    parser.add_argument("--max_seq_len", type=int, default=40960,
+                        help="Maximum context length to calculate loss")
     parser.add_argument("--max_tokens", type=int, default=4096,
-                        help="Maximum completion tokens per vLLM request")
+                        help="Maximum generation tokens")
 
     # Generation and RL settings
     parser.add_argument("--num_generations", type=int, default=6,
                         help="Number of generations per prompt")
-    parser.add_argument("--num_iterations", type=int, default=3,
+    parser.add_argument("--num_iterations", type=int, default=4,
                         help="Number of PPO iterations")
     parser.add_argument("--beta", type=float, default=0.01,
                         help="KL penalty coefficient")
@@ -192,6 +197,8 @@ def parse_args():
                         help="Mask truncated completions")
     parser.add_argument("--loss_type", type=str, default="dr_grpo",
                         help="Type of loss function")
+    parser.add_argument("--mask_env_responses", action="store_true", default=True,
+                        help="Whether mask env responses")
 
     # vLLM server settings
     parser.add_argument("--use_vllm", action="store_true", default=True,
@@ -269,7 +276,7 @@ def main():
         tools=tools,
         format_prompt=False,
         max_turns=args.max_steps_env,
-        max_seq_len=args.max_seq_len,
+        max_tokens=args.max_tokens
     )
     vf_env.rubric.reward_weights = [
         args.reward_correct_answer, args.reward_tool_execution, args.reward_format,0.2 , 0.2,0.2, 0.] #
@@ -292,9 +299,6 @@ def main():
     if args.lr_scheduler_type == "warmup_stable_decay":
         print("Using warmup_stable_decay")
         setattr(training_args, "lr_scheduler_kwargs", { "num_decay_steps":128})
-
-    print(training_args)
-
     trainer = vf.GRPOTrainer(
         model=model,
         processing_class=tokenizer,

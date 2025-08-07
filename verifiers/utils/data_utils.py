@@ -177,7 +177,7 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
 def load_example_dataset(name: str = "gsm8k",
                          split: str | None = None,
                          n: int | None = None,
-                         seed: int = 0) -> Dataset:
+                         seed: int = None) -> Dataset:
     if name == "aime2024":
         if split is None:
             split = "train"

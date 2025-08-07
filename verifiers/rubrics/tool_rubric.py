@@ -174,7 +174,7 @@ class ToolRubric(Rubric):
 
     def __init__(
         self,
-        parser: Parser = XMLParser(fields=["think", ("tool_call", "answer")]),
+        parser: Parser = XMLParser(fields=["think", ("tool_call","answer")]),# 
         env_parser: Parser = XMLParser(fields=["tool_response"]),
         tools: List[Callable] = [],
     ):
@@ -401,7 +401,7 @@ class ToolRubric(Rubric):
                 if find_num_tags(content, "tool_call") > 0 and find_num_tags(content, "tool_response") > 0:
                     return 0.  # total_reward -= 2
         if num_turn > 0:
-            total_reward += num_answer*(num_think + num_tool)/num_turn
+            total_reward += num_answer*(num_think + num_tool)/num_turn # 
         return total_reward
 
     def qa_reward_func(self,prompt, completion, answer, task, **kwargs) -> float | None:
@@ -417,7 +417,7 @@ class ToolRubric(Rubric):
         if query == "":
             raise ("error")
         if task == "qa":
-            response = str(self.parser.parse_answer(completion))
+            response =  str(self.parser.parse_answer(completion)) #completion[-1]["content"] #
 
             # Try to parse the answer as a list of possible answers
             try:
@@ -482,12 +482,12 @@ class ToolRubric(Rubric):
         # Calculate reward
         if tool_attempts == 0 or num_search == 0:
             return -0.5
-        return num_visit/num_search
-        # x = num_visit/num_search
-        # if x < 1:
-        #     return -0.5
-        # else:
-        #     return ((x-1)/4)**0.25
+        # return num_visit/num_search
+        x = num_visit/num_search
+        if x < 1:
+            return -0.5
+        else:
+            return ((x-1)/4)**0.25
         
     def tool_execution_reward_func(self, completion: List[Dict[str, str]], **kwargs) -> float:
         """

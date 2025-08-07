@@ -165,13 +165,13 @@ class Rubric:
         if abs(format_func - 0.2) < 1e-6:
             format_func = 1
         else:
-            format_func = 0.
+            format_func = 0.1*format_func
         if num_xml_reward > 0: num_xml_reward = 1.
-        if visit_tool_reward*5 < 0.5:
+        if visit_tool_reward*5 < 0.3:
             visit_tool_reward = 0.
         elif visit_tool_reward*5 >0.8:
             visit_tool_reward = 1.
-        rewards['reward'] = correct_answer_reward *num_xml_reward*format_func*efficient_thinking_reward*5 #* visit_tool_reward*5
+        rewards['reward'] = correct_answer_reward*num_xml_reward*format_func + correct_answer_reward*num_xml_reward*format_func* visit_tool_reward*5 #*efficient_thinking_reward*5  #* visit_tool_reward*5 *num_xml_reward 
         return rewards
 
     async def score_rollouts(

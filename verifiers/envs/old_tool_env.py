@@ -60,7 +60,7 @@ def infer_schema_from_function(func: Callable) -> Dict[str, Any]:
     return {
         "name": func.__name__,
         "description": description,
-        "args": args,
+        "arguments": args,
         "returns": return_description + f" ({return_type})",
         "examples": examples,
     }
@@ -73,7 +73,7 @@ def format_tool_descriptions(schemas: List[Dict[str, Any]]) -> str:
         desc = [f"{schema['name']}: {schema['description']}"]
 
         desc.append("\nArguments:")
-        for arg_name, arg_info in schema["args"].items():
+        for arg_name, arg_info in schema["arguments"].items():
             default = (
                 f" (default: {arg_info['default']})" if "default" in arg_info else ""
             )
@@ -99,7 +99,7 @@ class ToolEnv(MultiTurnEnv):
         system_prompt: str = "",
         format_prompt: bool = True,
         parser: XMLParser = XMLParser(
-            fields=["think", ("tool_call", "answer")]),
+            fields=["think", ("tool_call", "answer")]), #
         env_parser: XMLParser = XMLParser(fields=["tool_response"]),
         max_turns: int = 10,
         **kwargs,
@@ -133,6 +133,8 @@ class ToolEnv(MultiTurnEnv):
     def is_completed(
         self, messages: List[Dict[str, str]], state: Dict[str, Any], **kwargs: Any
     ) -> bool:
+        content = messages[-1]["content"]
+        # return "<tool_call>" not in content and "</tool_call>" not in content and "</tool_response>" not in content and "<tool_response>" not in content
         return self.parser.parse_answer(messages) is not None
 
     def call_tool(self, tool_json: str, max_chars: int = 8192, **kwargs) -> str:
@@ -152,13 +154,12 @@ class ToolEnv(MultiTurnEnv):
                     + 'Please format your tool call as \'{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\''
                 )
 
-            # follow Qwen3 template
             tool_func = self.tools[tool_name]
             tool_args = command.get("arguments", {})
             if isinstance(tool_args, str):
                 tool_schema = next(
                     (
-                        schema["args"]
+                        schema["arguments"]
                         for schema in self.tool_schemas
                         if schema["name"] == tool_name
                     ),
@@ -174,7 +175,7 @@ class ToolEnv(MultiTurnEnv):
         except Exception as e:
             return (
                 f"Error: call tool {tool_json} with error: '{str(e)}'. "
-                + 'Please format your tool call as \'{"name": "tool_name", "arguments": {{"arg1": "value1", "arg2": "value2"}}\''
+                + 'Please format your tool call as \'{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}\''
             )
 
     def env_response(
@@ -198,11 +199,11 @@ class ToolEnv(MultiTurnEnv):
                 except Exception as e:
                     print(e, tool, type(tool))
                     results.append(
-                        f"<tool_response>\nError: Tool command {tool} not found or invalid XML format. Please ensure correct formatting.\n</tool_response>")
+                        f"<tool_response>\nError: Tool command {tool} not found or not in <tool_call> </tool_call> tag. Please ensure correct formatting.\n</tool_response>")
             if len(results) == 0:
                 return [{
                     "role": "user",
-                    "content": "<tool_response>\nError: Tool command not found or invalid XML format. Please ensure correct formatting.\n</tool_response>\n",
+                    "content": "<tool_response>\nError: Tool command not found or not in <tool_call> </tool_call> tag or your answer not in <answer> </answer> tag. Please ensure correct formatting.\n</tool_response>\n",
                 }], state
 
             results = "\n".join(results)
@@ -210,5 +211,5 @@ class ToolEnv(MultiTurnEnv):
             return [{"role": "user", "content": results}], state
         return [{
             "role": "user",
-            "content": "<tool_response>\nError: Tool command not found or invalid XML format. Please ensure correct formatting.</tool_response>",
+            "content": "<tool_response>\nError: Tool command not found or not in <tool_call> </tool_call> tag or your answer not in <answer> </answer> tag. Please ensure correct formatting.</tool_response>",
         }], state
